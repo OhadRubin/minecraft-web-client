@@ -39,36 +39,40 @@ async def test_connection():
             await ws.send(json.dumps(touch_command))
             print("✅ Successfully sent lookTouch command")
 
-            # Test DOM element clicking (new method)
+            # Test document mouse events for left/right clicks
             break_command = {
-                "type": "clickElement",
-                "selector": "#ui-root > div:nth-child(1) > div:nth-child(5)",
+                "type": "documentMouseEvent",
+                "button": 0,
                 "action": "down",
+                "updateMouse": True,
             }
             await ws.send(json.dumps(break_command))
             await asyncio.sleep(0.2)
             break_release = {
-                "type": "clickElement",
-                "selector": "#ui-root > div:nth-child(1) > div:nth-child(5)",
+                "type": "documentMouseEvent",
+                "button": 0,
                 "action": "up",
+                "updateMouse": False,
             }
             await ws.send(json.dumps(break_release))
-            print("✅ Successfully sent DOM break/pickaxe commands")
+            print("✅ Successfully sent document left click commands")
 
             place_command = {
-                "type": "clickElement",
-                "selector": "#ui-root > div:nth-child(1) > div:nth-child(4)",
+                "type": "documentMouseEvent",
+                "button": 2,
                 "action": "down",
+                "updateMouse": True,
             }
             await ws.send(json.dumps(place_command))
             await asyncio.sleep(0.2)
             place_release = {
-                "type": "clickElement",
-                "selector": "#ui-root > div:nth-child(1) > div:nth-child(4)",
+                "type": "documentMouseEvent",
+                "button": 2,
                 "action": "up",
+                "updateMouse": False,
             }
             await ws.send(json.dumps(place_release))
-            print("✅ Successfully sent DOM place/circle commands")
+            print("✅ Successfully sent document right click commands")
 
             # Test left click commands (legacy method)
             await ws.send(json.dumps({"type": "leftDown"}))
@@ -110,8 +114,7 @@ async def test_connection():
             print("Available commands:")
             print("  • Movement joystick (move)")
             print("  • Camera look area (look/lookTouch)")
-            print("  • Left/Right click buttons (DOM clicking)")
-            print("  • Left/Right click buttons (legacy WebSocket)")
+            print("  • Left/Right click buttons (documentMouseEvent)")
             print("  • Jump, Sneak, Sprint buttons")
             print("  • Inventory button")
             print("\nYou can now run: python pygame_controller.py")
