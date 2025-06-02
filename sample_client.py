@@ -42,4 +42,19 @@ async def main():
             )
         )
 
+        # Example left click using documentMouseEvent
+        await ws.send(json.dumps({
+            "type": "documentMouseEvent",
+            "button": 0,
+            "action": "down",
+            "updateMouse": True
+        }))
+        await asyncio.sleep(0.5)
+        await ws.send(json.dumps({
+            "type": "documentMouseEvent",
+            "button": 0,
+            "action": "up",
+            "updateMouse": False
+        }))
+
 asyncio.run(main())

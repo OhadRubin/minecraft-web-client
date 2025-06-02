@@ -186,10 +186,10 @@ The controller sends these WebSocket commands:
 - **Raw Touch**: `{"type": "lookTouch", "currentX": <int>, "lastX": <int>, "currentY": <int>, "lastY": <int>}`
 
 ### **Click Actions:**
-- **Left Click Down**: `{"type": "clickElement", "selector": "#ui-root > div:nth-child(1) > div:nth-child(5)", "action": "down"}` - Triggers pickaxe/break button
-- **Left Click Up**: `{"type": "clickElement", "selector": "#ui-root > div:nth-child(1) > div:nth-child(5)", "action": "up"}` - Releases pickaxe/break button  
-- **Right Click Down**: `{"type": "clickElement", "selector": "#ui-root > div:nth-child(1) > div:nth-child(4)", "action": "down"}` - Triggers circle/place button
-- **Right Click Up**: `{"type": "clickElement", "selector": "#ui-root > div:nth-child(1) > div:nth-child(4)", "action": "up"}` - Releases circle/place button
+- **Left Click Down**: `{"type": "documentMouseEvent", "button": 0, "action": "down", "updateMouse": true}`
+- **Left Click Up**: `{"type": "documentMouseEvent", "button": 0, "action": "up"}`
+- **Right Click Down**: `{"type": "documentMouseEvent", "button": 2, "action": "down", "updateMouse": true}`
+- **Right Click Up**: `{"type": "documentMouseEvent", "button": 2, "action": "up"}`
 
 ### **Legacy Click Actions** (still supported):
 - **Left Click Down**: `{"type": "leftDown"}`
@@ -210,20 +210,11 @@ All commands correspond to the WebSocket API documented in the main README.
 
 ## Technical Notes
 
-### **New DOM Element Clicking Approach**
+### **Document Mouse Event Approach**
 
-The left and right click buttons now use direct DOM element manipulation instead of WebSocket mouse events. This provides:
+The controller now dispatches synthetic mouse events directly to the document, mirroring how the in-browser touch controls trigger clicks. This keeps the standard mouse plugin logic intact and ensures reliable breaking/placing behavior.
 
-- **Better Reliability**: Uses the same touch interface that mobile devices use
-- **Consistent Behavior**: Matches exactly how the web client's built-in touch controls work
-- **No Timing Issues**: Eliminates rapid press/release problems
-
-### **CSS Selectors Used**
-
-- **Break/Pickaxe Button**: `#ui-root > div:nth-child(1) > div:nth-child(5)`
-- **Place/Circle Button**: `#ui-root > div:nth-child(1) > div:nth-child(4)`
-
-These selectors target the actual touch interface buttons in the Minecraft web client.
+**Validation Bypass**: The synthetic events are marked with an `isWebSocketEvent` property that allows them to bypass the normal validation checks in the mouse plugin (such as `isTrusted` and pointer lock requirements). This ensures our WebSocket-generated events work reliably regardless of browser state.
 
 ## Requirements
 

@@ -1,7 +1,18 @@
 import { onCameraMove } from './cameraRotationControls'
 
 export interface MouseCommand {
-  type: 'control' | 'leftDown' | 'leftUp' | 'rightDown' | 'rightUp' | 'chat' | 'move' | 'look' | 'lookTouch' | 'clickElement'
+  type:
+  | 'control'
+  | 'leftDown'
+  | 'leftUp'
+  | 'rightDown'
+  | 'rightUp'
+  | 'chat'
+  | 'move'
+  | 'look'
+  | 'lookTouch'
+  | 'clickElement'
+  | 'documentMouseEvent'
   control?: string
   state?: boolean
   message?: string
@@ -15,10 +26,19 @@ export interface MouseCommand {
   lastY?: number
   selector?: string
   action?: 'down' | 'up' | 'click'
+  // documentMouseEvent fields
+  button?: 0 | 2
+  updateMouse?: boolean
 }
 
 class TouchEvaluator {
   constructor(private bot: any) {}
+
+  // Track active button states to prevent duplicate actions
+  private activeButtons = new Set<number>()
+  // Track button press timing
+  private buttonStartTimes = new Map<number, number>()
+
   async setup () {
     return !!this.bot
   }
@@ -162,6 +182,82 @@ class TouchEvaluator {
           }
         } catch (error) {
           console.error('[WsCommandClient] Error in clickElement:', error)
+        }
+        break
+      }
+      case 'documentMouseEvent': {
+        try {
+          const timestamp = Date.now()
+          console.log(`[WsCommandClient] Received ${cmd.action} command for button ${cmd.button} at ${timestamp}`)
+
+          const buttonKey = cmd.button!
+
+          if (cmd.action === 'down') {
+            // Only start if not already active (prevent duplicate starts)
+            if (!this.activeButtons.has(buttonKey)) {
+              this.activeButtons.add(buttonKey)
+              this.buttonStartTimes.set(buttonKey, timestamp)
+
+              const event = new MouseEvent('mousedown', {
+                bubbles: true,
+                cancelable: true,
+                button: cmd.button,
+                buttons: cmd.button === 0 ? 1 : 2
+              })
+
+              // Add a special property to mark this as a WebSocket synthetic event
+              Object.defineProperty(event, 'isWebSocketEvent', {
+                value: true,
+                writable: false,
+                enumerable: false
+              })
+
+              document.dispatchEvent(event)
+
+              // Call bot.mouse.update() immediately after dispatching, just like touch buttons do
+              if (cmd.updateMouse && this.bot?.mouse?.update) {
+                console.log('[WsCommandClient] Calling bot.mouse.update() synchronously after event dispatch')
+                this.bot.mouse.update()
+              }
+
+              console.log(`[WsCommandClient] Started button ${cmd.button} press (keeping active)`)
+            } else {
+              console.log(`[WsCommandClient] Button ${cmd.button} already active, ignoring duplicate down`)
+            }
+          } else if (cmd.action === 'up') {
+            // Only stop if currently active
+            if (this.activeButtons.has(buttonKey)) {
+              this.activeButtons.delete(buttonKey)
+
+              const startTime = this.buttonStartTimes.get(buttonKey)
+              const duration = startTime ? timestamp - startTime : 'unknown'
+              this.buttonStartTimes.delete(buttonKey)
+
+              const event = new MouseEvent('mouseup', {
+                bubbles: true,
+                cancelable: true,
+                button: cmd.button,
+                buttons: 0
+              })
+
+              // Add a special property to mark this as a WebSocket synthetic event
+              Object.defineProperty(event, 'isWebSocketEvent', {
+                value: true,
+                writable: false,
+                enumerable: false
+              })
+
+              document.dispatchEvent(event)
+
+              console.log(`[WsCommandClient] Ended button ${cmd.button} press (held for ${duration}ms)`)
+            } else {
+              console.log(`[WsCommandClient] Button ${cmd.button} not active, ignoring up`)
+            }
+          }
+
+          console.log(`[WsCommandClient] Active buttons: [${Array.from(this.activeButtons).join(', ')}]`)
+        } catch (error) {
+          console.error('[WsCommandClient] Error in documentMouseEvent:', error)
         }
         break
       }

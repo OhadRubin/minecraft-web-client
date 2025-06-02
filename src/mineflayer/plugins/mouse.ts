@@ -82,9 +82,23 @@ const otherListeners = () => {
 
 const domListeners = (bot: Bot) => {
   const abortController = new AbortController()
+
+  // Track button press timing
+  const buttonPressTimestamps = new Map<number, number>()
+
   document.addEventListener('mousedown', (e) => {
-    if (e.isTrusted && !document.pointerLockElement && !isCypress()) return
-    if (!isGameActive(true)) return
+    const timestamp = Date.now()
+
+    // Allow WebSocket synthetic events to bypass validation
+    const isWebSocketEvent = (e as any).isWebSocketEvent === true
+
+    if (!isWebSocketEvent) {
+    // Normal validation for regular mouse events
+      if (e.isTrusted && !document.pointerLockElement && !isCypress()) return
+      if (!isGameActive(true)) return
+    } else {
+      console.log('[Mouse Plugin] Allowing WebSocket synthetic event to bypass validation')
+    }
 
     getThreeJsRendererMethods()?.onPageInteraction()
 
@@ -95,17 +109,69 @@ const domListeners = (bot: Bot) => {
     }
 
     if (e.button === 0) {
+      buttonPressTimestamps.set(0, timestamp)
+      console.log(`[Mouse Plugin] Processing left click start at ${timestamp}`)
       bot.leftClickStart()
+
+      // Manually ensure the button state is set (bypasses beforeUpdateChecks clearing)
+      if (bot.mouse?.buttons) {
+        bot.mouse.buttons[0] = true
+        console.log('[Mouse Plugin] Set left button active, state:', bot.mouse.buttons[0])
+      }
     } else if (e.button === 2) {
+      buttonPressTimestamps.set(2, timestamp)
+      console.log(`[Mouse Plugin] Processing right click start at ${timestamp}`)
       bot.rightClickStart()
+
+      // Manually ensure the button state is set (bypasses beforeUpdateChecks clearing)  
+      if (bot.mouse?.buttons) {
+        bot.mouse.buttons[2] = true
+        console.log('[Mouse Plugin] Set right button active, state:', bot.mouse.buttons[2])
+      }
     }
   }, { signal: abortController.signal })
 
   document.addEventListener('mouseup', (e) => {
+    const timestamp = Date.now()
+
+    // Allow WebSocket synthetic events to bypass validation for mouseup too
+    const isWebSocketEvent = (e as any).isWebSocketEvent === true
+
+    if (!isWebSocketEvent) {
+      // For mouseup, we're less strict but still check if it's a trusted event in normal cases
+      // Note: mouseup doesn't have the same validation as mousedown in the original code
+    } else {
+      console.log('[Mouse Plugin] Allowing WebSocket synthetic mouseup event')
+    }
+
     if (e.button === 0) {
+      const startTime = buttonPressTimestamps.get(0)
+      const duration = startTime ? timestamp - startTime : 'unknown'
+      console.log(`[Mouse Plugin] Processing left click end at ${timestamp} (duration: ${duration}ms)`)
+
       bot.leftClickEnd()
+
+      // Manually ensure the button state is cleared
+      if (bot.mouse?.buttons) {
+        bot.mouse.buttons[0] = false
+        console.log('[Mouse Plugin] Set left button inactive, state:', bot.mouse.buttons[0])
+      }
+
+      buttonPressTimestamps.delete(0)
     } else if (e.button === 2) {
+      const startTime = buttonPressTimestamps.get(2)
+      const duration = startTime ? timestamp - startTime : 'unknown'
+      console.log(`[Mouse Plugin] Processing right click end at ${timestamp} (duration: ${duration}ms)`)
+
       bot.rightClickEnd()
+
+      // Manually ensure the button state is cleared
+      if (bot.mouse?.buttons) {
+        bot.mouse.buttons[2] = false
+        console.log('[Mouse Plugin] Set right button inactive, state:', bot.mouse.buttons[2])
+      }
+
+      buttonPressTimestamps.delete(2)
     }
   }, { signal: abortController.signal })
 
