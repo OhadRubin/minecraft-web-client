@@ -1,13 +1,15 @@
 # Pygame Controller for Minecraft Web Client
 
-A visual controller interface for the Minecraft Web Client using pygame. This provides an intuitive way to control movement and camera with virtual joysticks and touch areas.
+A comprehensive visual controller interface for the Minecraft Web Client using pygame. This provides an intuitive way to control movement, camera, and all common Minecraft actions with virtual joysticks, touch areas, and action buttons.
 
 ## Features
 
 - **Virtual Movement Joystick**: Drag to move your character (W/A/S/D equivalent)
 - **Camera Look Area**: Drag to look around (mouse look equivalent)
+- **Action Buttons**: Left/Right click, Jump, Sneak, Sprint, Inventory
 - **Real-time Connection Status**: See if you're connected to the game
 - **Visual Feedback**: UI elements change color when active
+- **Toggle Buttons**: Sneak and Sprint stay on/off
 - **Keyboard Shortcuts**: ESC to quit, R to reconnect
 
 ## Prerequisites
@@ -46,52 +48,66 @@ A visual controller interface for the Minecraft Web Client using pygame. This pr
 ### Interface Layout
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Minecraft Web Client Controller              Status: ●     │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│                    ┌─────────────────────┐                 │
-│                    │                     │                 │
-│                    │   Camera Look Area  │                 │
-│                    │   (drag to look)    │                 │
-│                    │                     │                 │
-│                    └─────────────────────┘                 │
-│                                                             │
-│                                         Movement: X=0 Z=0   │
-│    ●                                                        │
-│   ╱ ╲    Movement                                          │
-│  ╱   ╲   Joystick                                          │
-│ ╱  ●  ╲  (drag to move)                                    │
-│ ╲     ╱                                                    │
-│  ╲   ╱                                                     │
-│   ╲ ╱                                                      │
-│    ●                                                        │
-│                                                             │
-│ Controls:                                                   │
-│ • Left joystick: Move character                            │
-│ • Right area: Look around (drag mouse)                     │
-│ • ESC: Quit                                                │
-│ • R: Reconnect                                             │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  Minecraft Web Client Controller                           Status: ●        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│                    ┌─────────────────────┐     ┌─────────┬─────────┐      │
+│                    │                     │     │Left Click│Right Click│     │
+│                    │   Camera Look Area  │     │  (Red)   │ (Blue)  │      │
+│                    │   (drag to look)    │     ├─────────┼─────────┤      │
+│                    │                     │     │  Jump   │ Sneak   │      │
+│                    └─────────────────────┘     │ (Green) │(Orange) │      │
+│                                                ├─────────┼─────────┤      │
+│                                Movement: X=0 Z=0│ Sprint  │Inventory│      │
+│    ●                                            │(Purple) │ (Gray)  │      │
+│   ╱ ╲    Movement                              └─────────┴─────────┘      │
+│  ╱   ╲   Joystick                                                          │
+│ ╱  ●  ╲  (drag to move)                                                    │
+│ ╲     ╱                                                                    │
+│  ╲   ╱                                                                     │
+│   ╲ ╱                                                                      │
+│    ●                                                                        │
+│                                                                             │
+│ Controls:                                                                   │
+│ • Left joystick: Move character                                            │
+│ • Camera area: Look around (drag)                                          │
+│ • Buttons: Click actions                                                    │
+│ • ESC: Quit | R: Reconnect                                                 │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Controls
 
-- **Movement Joystick** (bottom left):
-  - Click and drag to move
-  - Up = forward, Down = backward, Left/Right = strafe
-  - Returns to center when released
-  - Sends `move` commands with x/z coordinates
+#### **Movement Joystick** (bottom left):
+- Click and drag to move
+- Up = forward, Down = backward, Left/Right = strafe
+- Returns to center when released
+- Sends `move` commands with x/z coordinates
 
-- **Camera Look Area** (top right):
-  - Click and drag to look around
-  - Mouse movement is translated to camera rotation
-  - Sends `look` commands with movement deltas
-  - Works like dragging the mouse in the game
+#### **Camera Look Area** (center):
+- Click and drag to look around
+- Mouse movement is translated to camera rotation
+- Sends `look` commands with movement deltas
+- Works like dragging the mouse in the game
 
-- **Keyboard Shortcuts**:
-  - `ESC`: Quit the controller
-  - `R`: Reconnect to the WebSocket server
+#### **Action Buttons** (right side):
+
+**Row 1:**
+- **🔴 Left Click** - Attack/Break blocks (hold to continue attacking)
+- **🔵 Right Click** - Use/Place blocks (hold to continue using)
+
+**Row 2:**
+- **🟢 Jump** - Jump/swim up (space key equivalent)
+- **🟠 Sneak** - Toggle sneak mode (shift key, stays on/off)
+
+**Row 3:**
+- **🟣 Sprint** - Toggle sprint mode (ctrl key, stays on/off)
+- **⚪ Inventory** - Open inventory (E key equivalent)
+
+#### **Keyboard Shortcuts**:
+- `ESC`: Quit the controller
+- `R`: Reconnect to the WebSocket server
 
 ### Status Indicators
 
@@ -99,7 +115,21 @@ A visual controller interface for the Minecraft Web Client using pygame. This pr
 - **Red "Disconnected"**: Connection failed or lost
 - **Blue Joystick**: Currently being used
 - **Green Look Area**: Currently being dragged
+- **Highlighted Buttons**: Currently being pressed
+- **Green Toggle Buttons**: Sneak/Sprint are active
 - **Movement Values**: Real-time X/Z movement coordinates
+
+## Button Behavior
+
+### **Standard Buttons** (Left Click, Right Click, Jump, Inventory):
+- Press and hold for continuous action
+- Release to stop the action
+- Visual feedback while pressed
+
+### **Toggle Buttons** (Sneak, Sprint):
+- Click once to turn ON (button turns green)
+- Click again to turn OFF (button returns to normal color)
+- State persists until toggled again
 
 ## Troubleshooting
 
@@ -129,34 +159,114 @@ A visual controller interface for the Minecraft Web Client using pygame. This pr
 
 ### Testing
 
-Run the connection test to verify everything is working:
+Run the enhanced connection test to verify everything is working:
 ```bash
 python test_connection.py
 ```
 
-This will test all command types and verify the WebSocket connection.
+This will test all command types including the new action buttons.
 
 ## Customization
 
 You can modify the controller by editing `pygame_controller.py`:
 
 - **Sensitivity**: Change the scaling factors in `handle_camera_look()`
-- **Joystick size**: Modify the radius in `VirtualJoystick` initialization
+- **Button Layout**: Modify positions in the button initialization
 - **Colors**: Update the color constants at the top of the file
-- **Layout**: Adjust the positions of UI elements in `__init__()`
+- **Button Sizes**: Adjust `button_width` and `button_height`
+- **Add More Buttons**: Create new Button instances and handle them in the main loop
 
 ## Commands Sent
 
 The controller sends these WebSocket commands:
 
+### **Movement & Camera:**
 - **Movement**: `{"type": "move", "x": <float>, "z": <float>}`
 - **Camera Look**: `{"type": "look", "movementX": <int>, "movementY": <int>}`
+- **Raw Touch**: `{"type": "lookTouch", "currentX": <int>, "lastX": <int>, "currentY": <int>, "lastY": <int>}`
 
-These correspond to the WebSocket API documented in the main README.
+### **Click Actions:**
+- **Left Click Down**: `{"type": "clickElement", "selector": "#ui-root > div:nth-child(1) > div:nth-child(5)", "action": "down"}` - Triggers pickaxe/break button
+- **Left Click Up**: `{"type": "clickElement", "selector": "#ui-root > div:nth-child(1) > div:nth-child(5)", "action": "up"}` - Releases pickaxe/break button  
+- **Right Click Down**: `{"type": "clickElement", "selector": "#ui-root > div:nth-child(1) > div:nth-child(4)", "action": "down"}` - Triggers circle/place button
+- **Right Click Up**: `{"type": "clickElement", "selector": "#ui-root > div:nth-child(1) > div:nth-child(4)", "action": "up"}` - Releases circle/place button
+
+### **Legacy Click Actions** (still supported):
+- **Left Click Down**: `{"type": "leftDown"}`
+- **Left Click Up**: `{"type": "leftUp"}`
+- **Right Click Down**: `{"type": "rightDown"}`
+- **Right Click Up**: `{"type": "rightUp"}`
+
+### **DOM Element Clicking:**
+- **Generic Click**: `{"type": "clickElement", "selector": "<css-selector>", "action": "click|down|up"}`
+
+### **Control Actions:**
+- **Jump**: `{"type": "control", "control": "jump", "state": <bool>}`
+- **Sneak**: `{"type": "control", "control": "sneak", "state": <bool>}`
+- **Sprint**: `{"type": "control", "control": "sprint", "state": <bool>}`
+- **Inventory**: `{"type": "control", "control": "inventory", "state": <bool>}`
+
+All commands correspond to the WebSocket API documented in the main README.
+
+## Technical Notes
+
+### **New DOM Element Clicking Approach**
+
+The left and right click buttons now use direct DOM element manipulation instead of WebSocket mouse events. This provides:
+
+- **Better Reliability**: Uses the same touch interface that mobile devices use
+- **Consistent Behavior**: Matches exactly how the web client's built-in touch controls work
+- **No Timing Issues**: Eliminates rapid press/release problems
+
+### **CSS Selectors Used**
+
+- **Break/Pickaxe Button**: `#ui-root > div:nth-child(1) > div:nth-child(5)`
+- **Place/Circle Button**: `#ui-root > div:nth-child(1) > div:nth-child(4)`
+
+These selectors target the actual touch interface buttons in the Minecraft web client.
 
 ## Requirements
 
 - Python 3.7+
 - pygame >= 2.5.0
 - websockets >= 12.0
-- Minecraft Web Client with WebSocket support enabled 
+- Minecraft Web Client with WebSocket support enabled
+
+## Advanced Usage
+
+### Adding Custom Buttons
+
+To add a new button (e.g., for dropping items):
+
+1. **Add the button in `__init__`**:
+```python
+self.drop_btn = Button(start_x, start_y + spacing * 3, button_width, button_height, "Drop", YELLOW)
+```
+
+2. **Handle it in the main loop**:
+```python
+if self.drop_btn.handle_mouse(mouse_pos, mouse_pressed):
+    self.handle_control_button("drop", True)
+elif not self.drop_btn.is_pressed:
+    self.handle_control_button("drop", False)
+```
+
+3. **Draw it**:
+```python
+self.drop_btn.draw(self.screen)
+```
+
+### Adding Custom DOM Element Clicks
+
+To trigger other interface elements:
+
+```python
+# Example: Click a hotbar slot
+self.send_command_sync({
+    "type": "clickElement", 
+    "selector": ".hotbar-slot:nth-child(1)", 
+    "action": "click"
+})
+```
+
+The controller is designed to be easily extensible for any Minecraft action!

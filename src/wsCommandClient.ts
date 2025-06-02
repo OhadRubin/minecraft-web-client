@@ -1,7 +1,7 @@
 import { onCameraMove } from './cameraRotationControls'
 
 export interface MouseCommand {
-  type: 'control' | 'leftDown' | 'leftUp' | 'rightDown' | 'rightUp' | 'chat' | 'move' | 'look' | 'lookTouch'
+  type: 'control' | 'leftDown' | 'leftUp' | 'rightDown' | 'rightUp' | 'chat' | 'move' | 'look' | 'lookTouch' | 'clickElement'
   control?: string
   state?: boolean
   message?: string
@@ -13,6 +13,8 @@ export interface MouseCommand {
   lastX?: number
   currentY?: number
   lastY?: number
+  selector?: string
+  action?: 'down' | 'up' | 'click'
 }
 
 class TouchEvaluator {
@@ -26,16 +28,56 @@ class TouchEvaluator {
         this.bot.setControlState(cmd.control!, cmd.state)
         break
       case 'leftDown':
-        this.bot.leftClickStart()
+        try {
+          console.log('[WsCommandClient] Executing leftDown command')
+          if (typeof this.bot.leftClickStart === 'function') {
+            this.bot.leftClickStart()
+            console.log('[WsCommandClient] leftClickStart executed successfully')
+          } else {
+            console.error('[WsCommandClient] leftClickStart is not a function:', typeof this.bot.leftClickStart)
+          }
+        } catch (error) {
+          console.error('[WsCommandClient] Error in leftDown:', error)
+        }
         break
       case 'leftUp':
-        this.bot.leftClickEnd()
+        try {
+          console.log('[WsCommandClient] Executing leftUp command')
+          if (typeof this.bot.leftClickEnd === 'function') {
+            this.bot.leftClickEnd()
+            console.log('[WsCommandClient] leftClickEnd executed successfully')
+          } else {
+            console.error('[WsCommandClient] leftClickEnd is not a function:', typeof this.bot.leftClickEnd)
+          }
+        } catch (error) {
+          console.error('[WsCommandClient] Error in leftUp:', error)
+        }
         break
       case 'rightDown':
-        this.bot.rightClickStart()
+        try {
+          console.log('[WsCommandClient] Executing rightDown command')
+          if (typeof this.bot.rightClickStart === 'function') {
+            this.bot.rightClickStart()
+            console.log('[WsCommandClient] rightClickStart executed successfully')
+          } else {
+            console.error('[WsCommandClient] rightClickStart is not a function:', typeof this.bot.rightClickStart)
+          }
+        } catch (error) {
+          console.error('[WsCommandClient] Error in rightDown:', error)
+        }
         break
       case 'rightUp':
-        this.bot.rightClickEnd()
+        try {
+          console.log('[WsCommandClient] Executing rightUp command')
+          if (typeof this.bot.rightClickEnd === 'function') {
+            this.bot.rightClickEnd()
+            console.log('[WsCommandClient] rightClickEnd executed successfully')
+          } else {
+            console.error('[WsCommandClient] rightClickEnd is not a function:', typeof this.bot.rightClickEnd)
+          }
+        } catch (error) {
+          console.error('[WsCommandClient] Error in rightUp:', error)
+        }
         break
       case 'chat':
         this.bot.chat(cmd.message!)
@@ -75,6 +117,51 @@ class TouchEvaluator {
             type: 'touchmove',
             stopPropagation: () => { } // No-op function for WebSocket context
           })
+        }
+        break
+      }
+      case 'clickElement': {
+        try {
+          console.log(`[WsCommandClient] Executing clickElement: ${cmd.selector} - ${cmd.action}`)
+          const element = document.querySelector(cmd.selector!) as HTMLElement
+          if (!element) {
+            console.error(`[WsCommandClient] Element not found: ${cmd.selector}`)
+            break
+          }
+
+          if (cmd.action === 'down') {
+            // Trigger pointerdown event (touch interface uses pointer events)
+            const event = new PointerEvent('pointerdown', {
+              bubbles: true,
+              cancelable: true,
+              pointerId: 1,
+              pointerType: 'mouse',
+              isPrimary: true,
+              button: 0,
+              buttons: 1
+            })
+            element.dispatchEvent(event)
+            console.log(`[WsCommandClient] Dispatched pointerdown on ${cmd.selector}`)
+          } else if (cmd.action === 'up') {
+            // Trigger pointerup event (touch interface uses pointer events)
+            const event = new PointerEvent('pointerup', {
+              bubbles: true,
+              cancelable: true,
+              pointerId: 1,
+              pointerType: 'mouse',
+              isPrimary: true,
+              button: 0,
+              buttons: 0
+            })
+            element.dispatchEvent(event)
+            console.log(`[WsCommandClient] Dispatched pointerup on ${cmd.selector}`)
+          } else if (cmd.action === 'click') {
+            // Trigger click event
+            element.click()
+            console.log(`[WsCommandClient] Clicked ${cmd.selector}`)
+          }
+        } catch (error) {
+          console.error('[WsCommandClient] Error in clickElement:', error)
         }
         break
       }
