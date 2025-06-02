@@ -348,44 +348,44 @@ class MinecraftController:
 
     def handle_left_click(self, pressed: bool):
         if pressed and not self.left_clicking:
-            # Click the break/pickaxe button
             self.send_command_sync(
                 {
-                    "type": "clickElement",
-                    "selector": "#ui-root > div:nth-child(1) > div:nth-child(5)",
+                    "type": "documentMouseEvent",
+                    "button": 0,
                     "action": "down",
+                    "updateMouse": True,
                 }
             )
             self.left_clicking = True
         elif not pressed and self.left_clicking:
-            # Release the break/pickaxe button
             self.send_command_sync(
                 {
-                    "type": "clickElement",
-                    "selector": "#ui-root > div:nth-child(1) > div:nth-child(5)",
+                    "type": "documentMouseEvent",
+                    "button": 0,
                     "action": "up",
+                    "updateMouse": False,
                 }
             )
             self.left_clicking = False
 
     def handle_right_click(self, pressed: bool):
         if pressed and not self.right_clicking:
-            # Click the place/circle button
             self.send_command_sync(
                 {
-                    "type": "clickElement",
-                    "selector": "#ui-root > div:nth-child(1) > div:nth-child(4)",
+                    "type": "documentMouseEvent",
+                    "button": 2,
                     "action": "down",
+                    "updateMouse": True,
                 }
             )
             self.right_clicking = True
         elif not pressed and self.right_clicking:
-            # Release the place/circle button
             self.send_command_sync(
                 {
-                    "type": "clickElement",
-                    "selector": "#ui-root > div:nth-child(1) > div:nth-child(4)",
+                    "type": "documentMouseEvent",
+                    "button": 2,
                     "action": "up",
+                    "updateMouse": False,
                 }
             )
             self.right_clicking = False

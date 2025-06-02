@@ -1,7 +1,18 @@
 import { onCameraMove } from './cameraRotationControls'
 
 export interface MouseCommand {
-  type: 'control' | 'leftDown' | 'leftUp' | 'rightDown' | 'rightUp' | 'chat' | 'move' | 'look' | 'lookTouch' | 'clickElement'
+  type:
+    | 'control'
+    | 'leftDown'
+    | 'leftUp'
+    | 'rightDown'
+    | 'rightUp'
+    | 'chat'
+    | 'move'
+    | 'look'
+    | 'lookTouch'
+    | 'clickElement'
+    | 'documentMouseEvent'
   control?: string
   state?: boolean
   message?: string
@@ -15,6 +26,9 @@ export interface MouseCommand {
   lastY?: number
   selector?: string
   action?: 'down' | 'up' | 'click'
+  // documentMouseEvent fields
+  button?: 0 | 2
+  updateMouse?: boolean
 }
 
 class TouchEvaluator {
@@ -162,6 +176,29 @@ class TouchEvaluator {
           }
         } catch (error) {
           console.error('[WsCommandClient] Error in clickElement:', error)
+        }
+        break
+      }
+      case 'documentMouseEvent': {
+        try {
+          console.log(`[WsCommandClient] Dispatching document mouse event: button ${cmd.button} ${cmd.action}`)
+
+          const event = new MouseEvent(cmd.action === 'down' ? 'mousedown' : 'mouseup', {
+            bubbles: true,
+            cancelable: true,
+            button: cmd.button,
+            buttons: cmd.action === 'down' ? (cmd.button === 0 ? 1 : 2) : 0
+          })
+
+          document.dispatchEvent(event)
+
+          if (cmd.updateMouse && this.bot?.mouse?.update) {
+            this.bot.mouse.update()
+          }
+
+          console.log(`[WsCommandClient] Dispatched mouse${cmd.action} button ${cmd.button}`)
+        } catch (error) {
+          console.error('[WsCommandClient] Error in documentMouseEvent:', error)
         }
         break
       }

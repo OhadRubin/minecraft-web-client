@@ -147,9 +147,11 @@ found in `sample_client.py`.
 - `{"type": "move", "x": 0, "z": -1}` — simulate the left touch joystick.
 - `{"type": "look", "movementX": -30, "movementY": 0}` — rotate the camera like
   dragging on the right touch area.
-- `{"type": "lookTouch", "currentX": 70, "lastX": 100, "currentY": 90, "lastY": 100}` — 
-  send raw touch coordinates. The system calculates movement deltas and simulates a 
+- `{"type": "lookTouch", "currentX": 70, "lastX": 100, "currentY": 90, "lastY": 100}` —
+  send raw touch coordinates. The system calculates movement deltas and simulates a
   `touchmove` event with `movementX: (currentX - lastX)` and `movementY: (currentY - lastY)`.
+- `{"type": "documentMouseEvent", "button": 0, "action": "down"}` — dispatch a mouse event to the
+  document. Use `button: 0` for left click and `button: 2` for right click with `action` `down` or `up`.
 
 ### F3 Keybindings
 
