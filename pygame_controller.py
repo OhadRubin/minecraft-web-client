@@ -192,9 +192,9 @@ class MinecraftController:
 
     def handle_movement(self, x: float, y: float):
         # Convert joystick coordinates to movement commands
-        # y is inverted because joystick up should be forward (negative z)
+        # y maps directly to z: joystick up (negative y) = forward (negative z)
         movement_x = x
-        movement_z = -y  # Invert Y axis
+        movement_z = y  # Remove the inversion - up should be forward (negative z)
 
         # Only send if movement changed significantly
         if (
