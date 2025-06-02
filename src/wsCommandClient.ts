@@ -1,8 +1,18 @@
+import { onCameraMove } from './cameraRotationControls'
+
 export interface MouseCommand {
-  type: 'control' | 'leftDown' | 'leftUp' | 'rightDown' | 'rightUp' | 'chat'
+  type: 'control' | 'leftDown' | 'leftUp' | 'rightDown' | 'rightUp' | 'chat' | 'move' | 'look' | 'lookTouch'
   control?: string
   state?: boolean
   message?: string
+  x?: number
+  z?: number
+  movementX?: number
+  movementY?: number
+  currentX?: number
+  lastX?: number
+  currentY?: number
+  lastY?: number
 }
 
 class TouchEvaluator {
@@ -30,6 +40,44 @@ class TouchEvaluator {
       case 'chat':
         this.bot.chat(cmd.message!)
         break
+      case 'move': {
+        const coordToAction = [
+          ['z', -1, 'forward'],
+          ['z', 1, 'back'],
+          ['x', -1, 'left'],
+          ['x', 1, 'right']
+        ] as const
+        const vector: Record<string, number | undefined> = { x: cmd.x, z: cmd.z }
+        const newState: Record<string, boolean> = {}
+        for (const [coord, v] of Object.entries(vector)) {
+          if (v === undefined || Math.abs(v) < 0.3) continue
+          const mappedValue = v < 0 ? -1 : 1
+          const foundAction = coordToAction.find(([c, mapV]) => c === coord && mapV === mappedValue)?.[2]
+          if (foundAction) newState[foundAction] = true
+        }
+        for (const key of ['forward', 'back', 'left', 'right'] as const) {
+          const desired = !!newState[key]
+          if (desired !== this.bot.controlState[key]) {
+            this.bot.setControlState(key, desired)
+          }
+        }
+        break
+      }
+      case 'look':
+        onCameraMove({ movementX: cmd.movementX ?? 0, movementY: cmd.movementY ?? 0, type: 'ws' })
+        break
+      case 'lookTouch': {
+        if (cmd.currentX !== undefined && cmd.lastX !== undefined &&
+          cmd.currentY !== undefined && cmd.lastY !== undefined) {
+          onCameraMove({
+            movementX: (cmd.currentX - cmd.lastX),
+            movementY: (cmd.currentY - cmd.lastY),
+            type: 'touchmove',
+            stopPropagation: () => { } // No-op function for WebSocket context
+          })
+        }
+        break
+      }
     }
   }
 }

@@ -137,6 +137,20 @@ The most useful thing in devtools is the watch expression. You can add any expre
 
 You can also drag and drop any .dat or .mca (region files) into the browser window to see it's contents in the console.
 
+### WebSocket Command Interface
+
+There is a minimal WebSocket API that allows controlling the game from external
+applications. Run `node server.js` to start a local server and connect a client
+to `ws://localhost:8081`. Commands are JSON objects. Example Python usage can be
+found in `sample_client.py`.
+
+- `{"type": "move", "x": 0, "z": -1}` — simulate the left touch joystick.
+- `{"type": "look", "movementX": -30, "movementY": 0}` — rotate the camera like
+  dragging on the right touch area.
+- `{"type": "lookTouch", "currentX": 70, "lastX": 100, "currentY": 90, "lastY": 100}` — 
+  send raw touch coordinates. The system calculates movement deltas and simulates a 
+  `touchmove` event with `movementX: (currentX - lastX)` and `movementY: (currentY - lastY)`.
+
 ### F3 Keybindings
 
 - `F3` - Toggle debug overlay
