@@ -19,5 +19,5 @@ generated
 storybook-static
 server-jar
 config.local.json
-
+.history
 src/react/npmReactComponents.ts

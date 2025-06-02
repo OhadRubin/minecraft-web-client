@@ -18,6 +18,7 @@ import './mineflayer/plugins'
 import { getServerInfo } from './mineflayer/mc-protocol'
 import { onGameLoad } from './inventoryWindows'
 import initCollisionShapes from './getCollisionInteractionShapes'
+import { setupWsCommandClient } from './wsCommandClient'
 import protocolMicrosoftAuth from 'minecraft-protocol/src/client/microsoftAuth'
 import microsoftAuthflow from './microsoftAuthflow'
 import { Duplex } from 'stream'
@@ -569,6 +570,7 @@ export async function connect (connectOptions: ConnectOptions) {
       // "mapDownloader-saveInternal": false, // do not save into memory, todo must be implemeneted as we do really care of ram
     }) as unknown as typeof __type_bot
     window.bot = bot
+    setupWsCommandClient(bot)
     if (connectOptions.viewerWsConnect) {
       void onBotCreatedViewerHandler()
     }
