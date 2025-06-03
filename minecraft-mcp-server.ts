@@ -82,6 +82,73 @@ async function sendCommand(command: MinecraftCommand): Promise<string> {
     return `Command sent: ${command.type}`;
 }
 
+async function sendCommandWithScreenshot(command: MinecraftCommand, actionDescription: string) {
+    await ensureConnection();
+
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        throw new Error("WebSocket connection not available");
+    }
+
+    ws.send(JSON.stringify(command));
+    const screenshotData = await captureScreenshot();
+
+    return {
+        content: [
+            {
+                type: "text",
+                text: actionDescription,
+            },
+            {
+                type: "image",
+                data: screenshotData,
+                mimeType: "image/png",
+            },
+        ],
+    };
+}
+
+async function captureScreenshot(): Promise<string> {
+    try {
+        // Send screenshot command to the web client and wait for response
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            throw new Error("WebSocket connection not available");
+        }
+
+        return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error("Screenshot timeout"));
+            }, 5000);
+
+            const handleMessage = (data: Buffer) => {
+                try {
+                    const message = JSON.parse(data.toString());
+                    if (message.type === 'screenshot' && message.data) {
+                        clearTimeout(timeout);
+                        if (ws) {
+                            ws.off('message', handleMessage);
+                        }
+                        resolve(message.data);
+                    }
+                } catch (error) {
+                    // Ignore parsing errors for other messages
+                }
+            };
+
+            if (ws) {
+                ws.on('message', handleMessage);
+                ws.send(JSON.stringify({ type: "getScreenshot" }));
+            } else {
+                clearTimeout(timeout);
+                reject(new Error("WebSocket connection lost"));
+            }
+        });
+    } catch (error) {
+        console.error("Failed to capture screenshot:", error);
+        // Return a small transparent pixel as fallback
+        return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+    }
+}
+
 // Movement controls
 server.addTool({
     name: "move",
@@ -326,7 +393,21 @@ server.addTool({
         await sendCommand({ type: "move", x: 0, z: -1 });
         await new Promise(resolve => setTimeout(resolve, args.duration));
         await sendCommand({ type: "move", x: 0, z: 0 });
-        return `Walked forward for ${args.duration}ms`;
+
+        const screenshotData = await captureScreenshot();
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: `Walked forward for ${args.duration}ms`,
+                },
+                {
+                    type: "image",
+                    data: screenshotData,
+                    mimeType: "image/png",
+                },
+            ],
+        };
     },
 });
 
@@ -337,21 +418,21 @@ server.addTool({
         await sendCommand({ type: "control", control: "jump", state: true });
         await new Promise(resolve => setTimeout(resolve, 100));
         await sendCommand({ type: "control", control: "jump", state: false });
-        return "Performed jump";
-    },
-});
 
-server.addTool({
-    name: "leftClickAndHold",
-    description: "Hold left click for a specified duration (useful for breaking blocks)",
-    parameters: z.object({
-        duration: z.number().min(100).max(10000).default(1000).describe("Duration to hold in milliseconds"),
-    }),
-    execute: async (args) => {
-        await sendCommand({ type: "leftDown" });
-        await new Promise(resolve => setTimeout(resolve, args.duration));
-        await sendCommand({ type: "leftUp" });
-        return `Left clicked and held for ${args.duration}ms`;
+        const screenshotData = await captureScreenshot();
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: "Performed jump",
+                },
+                {
+                    type: "image",
+                    data: screenshotData,
+                    mimeType: "image/png",
+                },
+            ],
+        };
     },
 });
 
@@ -372,6 +453,56 @@ server.addTool({
         }[ws.readyState] || "UNKNOWN";
 
         return `WebSocket connection status: ${status}`;
+    },
+});
+
+// Screenshot tool
+server.addTool({
+    name: "screenshot",
+    description: "Capture and return a screenshot of the current game state",
+    execute: async () => {
+        const screenshotData = await captureScreenshot();
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: "Current game screenshot captured",
+                },
+                {
+                    type: "image",
+                    data: screenshotData,
+                    mimeType: "image/png",
+                },
+            ],
+        };
+    },
+});
+
+server.addTool({
+    name: "leftClickAndHold",
+    description: "Hold left click for a specified duration (useful for breaking blocks)",
+    parameters: z.object({
+        duration: z.number().min(100).max(10000).default(1000).describe("Duration to hold in milliseconds"),
+    }),
+    execute: async (args) => {
+        await sendCommand({ type: "leftDown" });
+        await new Promise(resolve => setTimeout(resolve, args.duration));
+        await sendCommand({ type: "leftUp" });
+
+        const screenshotData = await captureScreenshot();
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: `Left clicked and held for ${args.duration}ms`,
+                },
+                {
+                    type: "image",
+                    data: screenshotData,
+                    mimeType: "image/png",
+                },
+            ],
+        };
     },
 });
 

@@ -19,6 +19,7 @@ export interface MouseCommand {
   | 'dropItem'
   | 'swapHands'
   | 'cursor'
+  | 'getScreenshot'
   control?: string
   state?: boolean
   message?: string
@@ -44,7 +45,7 @@ export interface MouseCommand {
 }
 
 class TouchEvaluator {
-  constructor(private bot: any) {}
+  constructor(private bot: any, private ws?: WebSocket) { }
 
   // Track active button states to prevent duplicate actions
   private activeButtons = new Set<number>()
@@ -373,6 +374,44 @@ class TouchEvaluator {
           console.error('[WsCommandClient] Error moving cursor:', error)
         }
         break
+      case 'getScreenshot':
+        try {
+          console.log('[WsCommandClient] Capturing screenshot')
+          const canvas = document.getElementById('viewer-canvas') as HTMLCanvasElement
+          if (!canvas) {
+            console.error('[WsCommandClient] Canvas not found')
+            if (this.ws) {
+              this.ws.send(JSON.stringify({
+                type: 'screenshot',
+                data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+                error: 'Canvas not found'
+              }))
+            }
+            break
+          }
+
+          // Capture canvas as base64 PNG
+          const dataUrl = canvas.toDataURL('image/png')
+          const base64Data = dataUrl.split(',')[1] // Remove data:image/png;base64, prefix
+
+          console.log('[WsCommandClient] Screenshot captured successfully')
+          if (this.ws) {
+            this.ws.send(JSON.stringify({
+              type: 'screenshot',
+              data: base64Data
+            }))
+          }
+        } catch (error) {
+          console.error('[WsCommandClient] Error capturing screenshot:', error)
+          if (this.ws) {
+            this.ws.send(JSON.stringify({
+              type: 'screenshot',
+              data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+              error: error.message
+            }))
+          }
+        }
+        break
     }
   }
 }
@@ -404,11 +443,7 @@ class Worker {
   }
 }
 
-export function setupWsCommandClient (bot: any) {
-  const evaluator = new TouchEvaluator(bot)
-  const worker = new Worker(evaluator)
-  worker.start()
-
+export function setupWsCommandClient(bot: any) {
   // Get the current port and calculate WebSocket port (HTTP port + 1)
   const currentPort = location.port || (location.protocol === 'https:' ? '443' : '80')
   // const wsPort = parseInt(currentPort) + 1
@@ -419,6 +454,11 @@ export function setupWsCommandClient (bot: any) {
   console.log(`[WsCommandClient] Connecting to WebSocket server at: ${wsUrl}`)
 
   const ws = new WebSocket(wsUrl)
+
+  // Create evaluator and worker with WebSocket reference
+  const evaluator = new TouchEvaluator(bot, ws)
+  const worker = new Worker(evaluator)
+  worker.start()
 
   ws.addEventListener('open', () => {
     console.log(`[WsCommandClient] Connected to WebSocket server, registering as bot client`)
