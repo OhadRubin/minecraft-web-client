@@ -85,6 +85,8 @@ const domListeners = (bot: Bot) => {
 
   // Track button press timing
   const buttonPressTimestamps = new Map<number, number>()
+  // Track if any mouse button is currently pressed via WebSocket
+  let wsButtonActive = false
 
   document.addEventListener('mousedown', (e) => {
     const timestamp = Date.now()
@@ -98,6 +100,7 @@ const domListeners = (bot: Bot) => {
       if (!isGameActive(true)) return
     } else {
       console.log('[Mouse Plugin] Allowing WebSocket synthetic event to bypass validation')
+      wsButtonActive = true
     }
 
     getThreeJsRendererMethods()?.onPageInteraction()
@@ -129,6 +132,8 @@ const domListeners = (bot: Bot) => {
         console.log('[Mouse Plugin] Set right button active, state:', bot.mouse.buttons[2])
       }
     }
+
+    wsButtonActive = wsButtonActive || isWebSocketEvent
   }, { signal: abortController.signal })
 
   document.addEventListener('mouseup', (e) => {
@@ -173,11 +178,15 @@ const domListeners = (bot: Bot) => {
 
       buttonPressTimestamps.delete(2)
     }
+
+    if (isWebSocketEvent) {
+      wsButtonActive = bot.mouse.buttons.some(b => b)
+    }
   }, { signal: abortController.signal })
 
   bot.mouse.beforeUpdateChecks = () => {
-    if (!document.hasFocus()) {
-      // deactive all buttons
+    if (!document.hasFocus() && !wsButtonActive) {
+      // deactivate all buttons when unfocused unless controlled via WebSocket
       bot.mouse.buttons.fill(false)
     }
   }

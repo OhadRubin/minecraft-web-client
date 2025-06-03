@@ -278,7 +278,7 @@ You can override the WebSocket address by setting the `MINECRAFT_WS_URI` environ
 pip install -r requirements_kivy.txt
 ```
 
-The layout automatically adjusts when the device orientation changes and the WebSocket client will automatically reconnect if the connection drops. Portrait orientation stacks the controls vertically.
+The layout automatically adjusts when the device orientation changes and the WebSocket client will automatically reconnect if the connection drops.  In portrait mode the controls stack vertically for easier reach.
 
 ### Command line options
 
@@ -294,7 +294,5 @@ python android_controller.py --uri ws://192.168.1.100:8081 --left-handed
 ### Packaging with Buildozer
 
 1. Install Buildozer and initialize a spec file: `pip install buildozer && buildozer init`.
-2. Edit `buildozer.spec` so the `requirements` line includes `kivy,websockets`. The repository provides a `buildozer.spec.example` you can copy as a starting point.
+2. Edit `buildozer.spec` so the `requirements` line includes `kivy,websockets`. You can start from the `buildozer.spec.example` in this repository.
 3. Run `buildozer -v android debug` to produce an APK you can install on your device.
-
-For convenience, you can run `./setup_android.sh` to install dependencies and copy these docs for offline use.

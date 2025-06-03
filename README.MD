@@ -28,6 +28,8 @@ For building the project yourself / contributing, see [Development, Debugging & 
 - Support for custom rendering 3D engines. Modular architecture.
 - even even more!
 
+There is also an optional Python-based controller with a Kivy Android port. See `PYGAME_CONTROLLER.md` for details, including a sample `buildozer.spec.example` for packaging.
+
 All components that are in [Storybook](https://mcraft.fun/storybook) are published as npm module and can be used in other projects: [`minecraft-react`](https://npmjs.com/minecraft-react)
 
 ### Recommended Settings
