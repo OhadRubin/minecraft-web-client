@@ -9,6 +9,7 @@ const https = require('https')
 const fs = require('fs')
 const WebSocket = require('ws')
 const http = require('http')
+const { initWsLogger, shutdownWsLogger, logMessage } = require('./wsLogger')
 let siModule
 try {
     siModule = require('systeminformation')
@@ -16,6 +17,9 @@ try {
 
 // Create our app
 const app = express()
+console.log('initWsLogger')
+initWsLogger()
+process.on('exit', shutdownWsLogger)
 
 const isProd = process.argv.includes('--prod') || process.env.NODE_ENV === 'production'
 app.use(compression())
@@ -91,14 +95,17 @@ const wss = new WebSocket.Server({ server: wsServer })
 
 console.log(`[WebSocket] WebSocket server initialized`)
 
-wss.on('connection', ws => {
+wss.on('connection', (ws, req) => {
     console.log(`[WebSocket] New connection established. Total connections: ${wss.clients.size}`)
     console.log(`[WebSocket] Current bot clients: ${botClients.size}`)
+    logMessage('connect', req.socket.remoteAddress)
+    ws.remoteAddress = req.socket.remoteAddress
     
     ws.on('message', data => {
         try {
             const dataStr = data.toString()
             console.log(`[WebSocket] Received raw message: ${dataStr}`)
+            logMessage('incoming', dataStr)
             
             const msg = JSON.parse(dataStr)
             console.log(`[WebSocket] Parsed message:`, msg)
@@ -117,6 +124,8 @@ wss.on('connection', ws => {
             console.log(`[WebSocket] Forwarding command to ${botClients.size} bot client(s)`)
             const str = JSON.stringify(msg)
             let forwardedCount = 0
+
+            logMessage('outgoing', str)
             
             for (const client of botClients) {
                 if (client.readyState === WebSocket.OPEN) {
@@ -143,6 +152,7 @@ wss.on('connection', ws => {
     
     ws.on('close', () => {
         console.log(`[WebSocket] Connection closed. Remaining connections: ${wss.clients.size}`)
+        logMessage('disconnect', ws.remoteAddress)
     })
     
     ws.on('error', (err) => {
