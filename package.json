@@ -35,7 +35,8 @@
         "mcp-server": "tsx minecraft-mcp-server.ts",
         "mcp-dev": "npx fastmcp dev minecraft-mcp-server.ts",
         "mcp-inspect": "npx fastmcp inspect minecraft-mcp-server.ts",
-        "mcp-test": "tsx test-mcp-server.js"
+        "mcp-test": "tsx test-mcp-server.js",
+        "mcp-test-sse": "tsx test-mcp-server-sse.js"
     },
     "keywords": [
         "prismarine",

@@ -32,6 +32,7 @@ pnpm install
    - `pnpm mcp-dev` - Run with FastMCP CLI for testing
    - `pnpm mcp-inspect` - Run with MCP Inspector for web UI testing
    - `pnpm mcp-test` - Test the MCP server connection and tools
+   - `pnpm mcp-test-sse` - Test both HTTP streaming and SSE endpoints
 
 ## Running the Server
 
@@ -55,14 +56,20 @@ This opens the MCP Inspector web interface for testing tools.
 
 ### Option 4: Testing Mode
 ```bash
+# Test basic functionality
 pnpm mcp-test
+
+# Test both HTTP streaming and SSE endpoints  
+pnpm mcp-test-sse
 ```
-This runs a test script to verify the server is working and lists all available tools.
+The first command runs a basic test to verify the server is working and lists all available tools.
+The second command tests both HTTP streaming and SSE endpoints to ensure both transport methods work correctly.
 
 ## Server Endpoints
 
 When running the server directly (default port 4000):
-- **MCP Stream**: `http://localhost:4000/stream`
+- **HTTP Stream**: `http://localhost:4000/stream`
+- **SSE (Server-Sent Events)**: `http://localhost:4000/sse`
 - **Health Check**: `http://localhost:4000/health`
 
 > **Note**: The default port is 4000 to avoid conflicts with other development servers. You can change it by setting the `PORT` environment variable: `PORT=3000 pnpm mcp-server`
@@ -232,10 +239,13 @@ To use this server with Claude Desktop, add the following to your `claude_deskto
 }
 ```
 
+> Replace `/path/to/minecraft-web-client` with the actual path to your project directory.
+
 ### Using with Other MCP Clients
 
-For other MCP clients that support HTTP streaming:
+FastMCP automatically provides both HTTP streaming and SSE endpoints. Choose the one that works best for your client:
 
+#### HTTP Streaming (Recommended)
 ```typescript
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -252,6 +262,28 @@ const client = new Client(
 
 const transport = new StreamableHTTPClientTransport(
   new URL("http://localhost:4000/stream")
+);
+
+await client.connect(transport);
+```
+
+#### SSE (Server-Sent Events)
+```typescript
+import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+
+const client = new Client(
+  {
+    name: "minecraft-client",
+    version: "1.0.0",
+  },
+  {
+    capabilities: {},
+  }
+);
+
+const transport = new SSEClientTransport(
+  new URL("http://localhost:4000/sse")
 );
 
 await client.connect(transport);

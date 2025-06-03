@@ -12,7 +12,6 @@ interface MinecraftCommand {
 const server = new FastMCP({
     name: "Minecraft Controller",
     version: "1.0.0",
-    description: "Control a Minecraft bot through MCP tools",
     instructions: `This server provides tools to control a Minecraft bot through WebSocket commands. 
   
 The bot can perform various actions including:
@@ -168,14 +167,14 @@ server.addTool({
     name: "mouseEvent",
     description: "Send precise mouse events to the document",
     parameters: z.object({
-        button: z.enum([0, 2]).describe("Mouse button (0 = left, 2 = right)"),
+        button: z.enum(["0", "2"]).describe("Mouse button (0 = left, 2 = right)"),
         action: z.enum(["down", "up"]).describe("Mouse action"),
         updateMouse: z.boolean().optional().describe("Whether to update mouse state"),
     }),
     execute: async (args) => {
         return await sendCommand({
             type: "documentMouseEvent",
-            button: args.button,
+            button: parseInt(args.button),
             action: args.action,
             updateMouse: args.updateMouse,
         });
@@ -233,12 +232,12 @@ server.addTool({
     name: "scrollHotbar",
     description: "Scroll the hotbar left or right",
     parameters: z.object({
-        direction: z.enum([1, -1]).describe("Scroll direction (1 = right, -1 = left)"),
+        direction: z.enum(["1", "-1"]).describe("Scroll direction (1 = right, -1 = left)"),
     }),
     execute: async (args) => {
         return await sendCommand({
             type: "scrollHotbar",
-            direction: args.direction,
+            direction: parseInt(args.direction),
         });
     },
 });
