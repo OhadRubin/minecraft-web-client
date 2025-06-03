@@ -167,6 +167,45 @@ class VirtualJoystick:
         )
 
 
+class KeyboardMovement:
+    def __init__(self):
+        self.w_pressed = False
+        self.a_pressed = False
+        self.s_pressed = False
+        self.d_pressed = False
+
+    def handle_keyboard(self, keys_pressed) -> Tuple[float, float]:
+        # Update key states
+        self.w_pressed = keys_pressed[pygame.K_w]
+        self.a_pressed = keys_pressed[pygame.K_a]
+        self.s_pressed = keys_pressed[pygame.K_s]
+        self.d_pressed = keys_pressed[pygame.K_d]
+
+        # Calculate normalized values (-1 to 1) similar to joystick
+        norm_x = 0.0
+        norm_y = 0.0
+
+        if self.a_pressed:
+            norm_x -= 1.0
+        if self.d_pressed:
+            norm_x += 1.0
+        if self.w_pressed:
+            norm_y -= 1.0  # W = forward = negative Y (like joystick up)
+        if self.s_pressed:
+            norm_y += 1.0  # S = backward = positive Y (like joystick down)
+
+        # Normalize diagonal movement to maintain consistent speed
+        if norm_x != 0.0 and norm_y != 0.0:
+            length = math.sqrt(norm_x * norm_x + norm_y * norm_y)
+            norm_x /= length
+            norm_y /= length
+
+        return norm_x, norm_y
+
+    def is_any_key_pressed(self) -> bool:
+        return self.w_pressed or self.a_pressed or self.s_pressed or self.d_pressed
+
+
 class TouchArea:
     def __init__(self, x: int, y: int, width: int, height: int):
         self.rect = pygame.Rect(x, y, width, height)
@@ -216,6 +255,7 @@ class MinecraftController:
 
         # UI Elements
         self.movement_joystick = VirtualJoystick(150, WINDOW_HEIGHT - 150, 80)
+        self.keyboard_movement = KeyboardMovement()
         self.camera_area = TouchArea(350, 50, 350, 250)
 
         # Action Buttons
@@ -465,7 +505,8 @@ class MinecraftController:
 
         # Draw instructions
         instructions = [
-            "Left joystick: Move character",
+            "WASD: Move character (keyboard)",
+            "Left joystick: Move character (mouse)",
             "Camera area: Look around (drag)",
             "Buttons: Click actions",
             "ESC: Quit | R: Reconnect",
@@ -473,7 +514,7 @@ class MinecraftController:
 
         for i, instruction in enumerate(instructions):
             text = self.small_font.render(instruction, True, WHITE)
-            self.screen.blit(text, (10, WINDOW_HEIGHT - 100 + i * 20))
+            self.screen.blit(text, (10, WINDOW_HEIGHT - 120 + i * 20))
 
         # Draw current movement values
         move_text = self.small_font.render(
@@ -482,6 +523,15 @@ class MinecraftController:
             WHITE,
         )
         self.screen.blit(move_text, (350, 320))
+
+        # Draw keyboard status
+        keyboard_status = (
+            "WASD Active"
+            if self.keyboard_movement.is_any_key_pressed()
+            else "WASD Inactive"
+        )
+        kb_text = self.small_font.render(f"Keyboard: {keyboard_status}", True, WHITE)
+        self.screen.blit(kb_text, (350, 340))
 
         pygame.display.flip()
 
@@ -508,11 +558,24 @@ class MinecraftController:
             mouse_pos = pygame.mouse.get_pos()
             mouse_pressed = pygame.mouse.get_pressed()[0]  # Left click
 
+            # Get keyboard state
+            keys_pressed = pygame.key.get_pressed()
+
+            # Handle keyboard movement (similar to joystick)
+            keyboard_move_x, keyboard_move_y = self.keyboard_movement.handle_keyboard(
+                keys_pressed
+            )
+
             # Handle movement joystick
-            move_x, move_y = self.movement_joystick.handle_mouse(
+            joystick_move_x, joystick_move_y = self.movement_joystick.handle_mouse(
                 mouse_pos, mouse_pressed
             )
-            self.handle_movement(move_x, move_y)
+
+            # Use joystick input if it's not at the center, otherwise use keyboard
+            if abs(joystick_move_x) < 0.1 and abs(joystick_move_y) < 0.1:
+                self.handle_movement(keyboard_move_x, keyboard_move_y)
+            else:
+                self.handle_movement(joystick_move_x, joystick_move_y)
 
             # Handle camera look area
             delta_x, delta_y = self.camera_area.handle_mouse(mouse_pos, mouse_pressed)
