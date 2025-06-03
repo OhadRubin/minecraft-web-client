@@ -1,11 +1,14 @@
 import { proxy, useSnapshot } from 'valtio'
+import { useEffect } from 'react'
+import { activeModalStack, miscUiState } from '../globalState'
 import SharedHudVars from './SharedHudVars'
 import styles from './GamepadUiCursor.module.css'
 
 export const wsCursorState = proxy({
   x: 50,
   y: 50,
-  display: true,
+  display: false,
+  usingWsInput: false,
 })
 
 export const moveWsCursorBy = (dx: number, dy: number) => {
@@ -27,8 +30,30 @@ export const emitWsMousemove = () => {
 }
 
 export default function WsCursor () {
-  const { x, y, display } = useSnapshot(wsCursorState)
-  if (!display) return null
+  const hasModals = useSnapshot(activeModalStack).length > 0
+  const { x, y, usingWsInput } = useSnapshot(wsCursorState)
+  const { gameLoaded } = useSnapshot(miscUiState)
+
+  // Show WS cursor when using WebSocket input and (has modals OR game not loaded)
+  // This matches the GamepadUiCursor logic for inventory/menu navigation
+  const doDisplay = usingWsInput && (hasModals || !gameLoaded)
+
+  useEffect(() => {
+    wsCursorState.display = doDisplay
+  }, [doDisplay])
+
+  useEffect(() => {
+    // Set usingWsInput to true when WsCursor is mounted
+    // This assumes that if WsCursor is being used, we're in WebSocket mode
+    wsCursorState.usingWsInput = true
+    
+    return () => {
+      wsCursorState.usingWsInput = false
+    }
+  }, [])
+
+  if (!doDisplay) return null
+  
   return (
     <SharedHudVars>
       <div className={styles.crosshair} style={{ left: `${x}%`, top: `${y}%` }} />

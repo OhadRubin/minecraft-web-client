@@ -1,5 +1,5 @@
 import { onCameraMove } from './cameraRotationControls'
-import { moveWsCursorBy, emitWsMousemove } from './react/WsCursor'
+import { moveWsCursorBy, emitWsMousemove, wsCursorState } from './react/WsCursor'
 
 export interface MouseCommand {
   type:
@@ -18,6 +18,7 @@ export interface MouseCommand {
   | 'scrollHotbar'
   | 'dropItem'
   | 'swapHands'
+  | 'cursor'
   control?: string
   state?: boolean
   message?: string
@@ -54,6 +55,9 @@ class TouchEvaluator {
     return !!this.bot
   }
   async execute (cmd: MouseCommand) {
+    // Enable WebSocket input mode when any command is received
+    wsCursorState.usingWsInput = true
+
     switch (cmd.type) {
       case 'control':
         this.bot.setControlState(cmd.control!, cmd.state)
@@ -346,6 +350,27 @@ class TouchEvaluator {
           console.log(`[WsCommandClient] Successfully swapped hands`)
         } catch (error) {
           console.error('[WsCommandClient] Error swapping hands:', error)
+        }
+        break
+      case 'cursor':
+        try {
+          console.log(`[WsCommandClient] Moving cursor to position: ${cmd.x}, ${cmd.z}`)
+          if (cmd.x !== undefined && cmd.z !== undefined) {
+            // Set absolute cursor position (0-100 percentage)
+            wsCursorState.x = Math.min(100, Math.max(0, cmd.x))
+            wsCursorState.y = Math.min(100, Math.max(0, cmd.z))
+            emitWsMousemove()
+            console.log(`[WsCommandClient] Successfully moved cursor to ${wsCursorState.x}%, ${wsCursorState.y}%`)
+          } else if (cmd.movementX !== undefined || cmd.movementY !== undefined) {
+            // Relative cursor movement
+            const dx = (cmd.movementX || 0) * 0.5 // Adjust sensitivity as needed
+            const dy = (cmd.movementY || 0) * 0.5
+            moveWsCursorBy(dx, dy)
+            emitWsMousemove()
+            console.log(`[WsCommandClient] Moved cursor by ${dx}, ${dy}`)
+          }
+        } catch (error) {
+          console.error('[WsCommandClient] Error moving cursor:', error)
         }
         break
     }
