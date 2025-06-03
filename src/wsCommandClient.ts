@@ -1,4 +1,5 @@
 import { onCameraMove } from './cameraRotationControls'
+import { moveWsCursorBy, emitWsMousemove } from './react/WsCursor'
 
 export interface MouseCommand {
   type:
@@ -14,6 +15,9 @@ export interface MouseCommand {
   | 'clickElement'
   | 'documentMouseEvent'
   | 'setHotbarSlot'
+  | 'scrollHotbar'
+  | 'dropItem'
+  | 'swapHands'
   control?: string
   state?: boolean
   message?: string
@@ -32,6 +36,10 @@ export interface MouseCommand {
   updateMouse?: boolean
   // setHotbarSlot fields
   slot?: number
+  // scrollHotbar fields
+  direction?: 1 | -1
+  // dropItem fields
+  amount?: number
 }
 
 class TouchEvaluator {
@@ -125,6 +133,12 @@ class TouchEvaluator {
           if (desired !== this.bot.controlState[key]) {
             this.bot.setControlState(key, desired)
           }
+        }
+        if (cmd.x !== undefined && cmd.z !== undefined) {
+          const dx = cmd.x * 2
+          const dy = cmd.z * 2
+          moveWsCursorBy(dx, dy)
+          emitWsMousemove()
         }
         break
       }
@@ -275,6 +289,63 @@ class TouchEvaluator {
           }
         } catch (error) {
           console.error('[WsCommandClient] Error setting hotbar slot:', error)
+        }
+        break
+      case 'scrollHotbar':
+        try {
+          console.log(`[WsCommandClient] Scrolling hotbar in direction: ${cmd.direction}`)
+          if (cmd.direction !== undefined && (cmd.direction === 1 || cmd.direction === -1)) {
+            const newHotbarSlot = (this.bot.quickBarSlot + cmd.direction + 9) % 9
+            this.bot.setQuickBarSlot(newHotbarSlot)
+            console.log(`[WsCommandClient] Successfully scrolled hotbar to slot ${newHotbarSlot}`)
+          } else {
+            console.error(`[WsCommandClient] Invalid hotbar scroll direction: ${cmd.direction}. Must be 1 or -1.`)
+          }
+        } catch (error) {
+          console.error('[WsCommandClient] Error scrolling hotbar:', error)
+        }
+        break
+      case 'dropItem':
+        try {
+          console.log(`[WsCommandClient] Dropping item in amount: ${cmd.amount}`)
+          if (cmd.amount !== undefined && cmd.amount >= 1 && cmd.amount <= 64) {
+            // Use the same implementation as controls.ts for dropping items
+            this.bot._client.write('block_dig', {
+              'status': 4,
+              'location': {
+                'x': 0,
+                'z': 0,
+                'y': 0
+              },
+              'face': 0,
+              sequence: 0
+            })
+            const slot = this.bot.inventory.hotbarStart + this.bot.quickBarSlot
+            const item = this.bot.inventory.slots[slot]
+            if (item) {
+              item.count -= cmd.amount
+              this.bot.inventory.updateSlot(slot, item.count > 0 ? item : null!)
+            }
+            console.log(`[WsCommandClient] Successfully dropped ${cmd.amount} items`)
+          } else {
+            console.error(`[WsCommandClient] Invalid item drop amount: ${cmd.amount}. Must be 1-64.`)
+          }
+        } catch (error) {
+          console.error('[WsCommandClient] Error dropping item:', error)
+        }
+        break
+      case 'swapHands':
+        try {
+          console.log(`[WsCommandClient] Swapping hands`)
+          // Use the same implementation as controls.ts
+          this.bot._client.write('entity_action', {
+            entityId: this.bot.entity.id,
+            actionId: 6,
+            jumpBoost: 0
+          })
+          console.log(`[WsCommandClient] Successfully swapped hands`)
+        } catch (error) {
+          console.error('[WsCommandClient] Error swapping hands:', error)
         }
         break
     }

@@ -37,6 +37,7 @@ import Crosshair from './react/Crosshair'
 import ButtonAppProvider from './react/ButtonAppProvider'
 import ServersListProvider from './react/ServersListProvider'
 import GamepadUiCursor from './react/GamepadUiCursor'
+import WsCursor from './react/WsCursor'
 import KeybindingsScreenProvider from './react/KeybindingsScreenProvider'
 import HeldMapUi from './react/HeldMapUi'
 import BedTime from './react/BedTime'
@@ -248,6 +249,7 @@ const App = () => {
           <RobustPortal to={document.body}>
             <div className='overlay-top-scaled'>
               <GamepadUiCursor />
+              <WsCursor />
             </div>
             <div />
             <DebugEdges />

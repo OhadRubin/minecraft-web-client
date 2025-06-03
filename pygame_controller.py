@@ -310,6 +310,24 @@ class MinecraftController:
             GRAY,
         )
 
+        # New buttons for item management
+        self.drop_btn = Button(
+            start_x,
+            start_y + spacing * 3,
+            button_width,
+            button_height,
+            "Drop Item",
+            YELLOW,
+        )
+        self.swap_hands_btn = Button(
+            start_x + 90,
+            start_y + spacing * 3,
+            button_width,
+            button_height,
+            "Swap Hands",
+            (255, 100, 255),  # Pink/magenta
+        )
+
         # Hotbar Slot Buttons (1-9)
         hotbar_button_width = 50
         hotbar_button_height = 40
@@ -356,6 +374,8 @@ class MinecraftController:
         self._z_pressed = False
         self._x_pressed = False
         self._space_pressed = False
+        self._q_pressed = False
+        self._f_pressed = False
 
     async def connect_websocket(self):
         try:
@@ -522,6 +542,18 @@ class MinecraftController:
             self.current_hotbar_slot = slot
             self.last_hotbar_slot = slot
 
+    def handle_drop_item(self):
+        """Handle dropping 1 item from current hotbar slot"""
+        print("DROP ITEM - sending command")
+        command = {"type": "dropItem", "amount": 1}
+        self.send_command_sync(command)
+
+    def handle_swap_hands(self):
+        """Handle swapping main hand and off-hand items"""
+        print("SWAP HANDS - sending command")
+        command = {"type": "swapHands"}
+        self.send_command_sync(command)
+
     def draw_ui(self):
         self.screen.fill(BLACK)
 
@@ -556,6 +588,8 @@ class MinecraftController:
         self.sneak_btn.draw(self.screen)
         self.sprint_btn.draw(self.screen)
         self.inventory_btn.draw(self.screen)
+        self.drop_btn.draw(self.screen)
+        self.swap_hands_btn.draw(self.screen)
 
         # Draw hotbar slot buttons
         for i, button in enumerate(self.hotbar_buttons):
@@ -582,7 +616,8 @@ class MinecraftController:
             "Camera area: Look around (drag)",
             "Buttons: Click actions",
             "Ctrl/Z: Left click | Tab/X: Right click",
-            "Spacebar: Jump | 1-9: Hotbar slots",
+            "Spacebar: Jump | Q: Drop item | F: Swap hands",
+            "1-9: Hotbar slots",
             "ESC: Quit | R: Reconnect",
         ]
 
@@ -621,6 +656,10 @@ class MinecraftController:
             shortcut_status.append("X")
         if self._space_pressed:
             shortcut_status.append("Space")
+        if self._q_pressed:
+            shortcut_status.append("Q")
+        if self._f_pressed:
+            shortcut_status.append("F")
 
         shortcut_text = "Shortcuts: " + (
             ", ".join(shortcut_status) if shortcut_status else "None"
@@ -678,6 +717,10 @@ class MinecraftController:
             # Add spacebar for jumping
             space_pressed = keys_pressed[pygame.K_SPACE]
 
+            # Add item management shortcuts
+            q_pressed = keys_pressed[pygame.K_q]  # Drop item (standard Minecraft)
+            f_pressed = keys_pressed[pygame.K_f]  # Swap hands (standard Minecraft)
+
             # Combine all left click inputs
             left_click_input = ctrl_pressed or z_pressed
             # Combine all right click inputs
@@ -689,6 +732,8 @@ class MinecraftController:
             self._z_pressed = z_pressed
             self._x_pressed = x_pressed
             self._space_pressed = space_pressed
+            self._q_pressed = q_pressed
+            self._f_pressed = f_pressed
 
             # Debug output for keyboard detection
             if ctrl_pressed and not hasattr(self, "_last_ctrl_pressed"):
@@ -727,6 +772,22 @@ class MinecraftController:
             elif not space_pressed and hasattr(self, "_last_space_pressed"):
                 print("Spacebar released detected!")
                 delattr(self, "_last_space_pressed")
+
+            # Debug for Q key (drop item)
+            if q_pressed and not hasattr(self, "_last_q_pressed"):
+                print("Q pressed detected! (Drop item)")
+                self.handle_drop_item()
+                self._last_q_pressed = True
+            elif not q_pressed and hasattr(self, "_last_q_pressed"):
+                delattr(self, "_last_q_pressed")
+
+            # Debug for F key (swap hands)
+            if f_pressed and not hasattr(self, "_last_f_pressed"):
+                print("F pressed detected! (Swap hands)")
+                self.handle_swap_hands()
+                self._last_f_pressed = True
+            elif not f_pressed and hasattr(self, "_last_f_pressed"):
+                delattr(self, "_last_f_pressed")
 
             # Handle movement joystick
             joystick_move_x, joystick_move_y = self.movement_joystick.handle_mouse(
@@ -767,6 +828,13 @@ class MinecraftController:
 
             if self.inventory_btn.handle_mouse(mouse_pos, mouse_pressed):
                 self.handle_inventory()
+
+            # Handle new item management buttons
+            if self.drop_btn.handle_mouse(mouse_pos, mouse_pressed):
+                self.handle_drop_item()
+
+            if self.swap_hands_btn.handle_mouse(mouse_pos, mouse_pressed):
+                self.handle_swap_hands()
 
             # Handle hotbar slot buttons
             for i, button in enumerate(self.hotbar_buttons):
