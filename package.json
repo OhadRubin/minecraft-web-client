@@ -33,6 +33,8 @@
         "build-playground": "rsbuild build --config renderer/rsbuild.config.ts",
         "watch-playground": "rsbuild dev --config renderer/rsbuild.config.ts",
         "mcp-server": "tsx minecraft-mcp-server.ts",
+        "mcp-server-stdio": "tsx minecraft-mcp-server.ts --transport stdio",
+        "mcp-server-http": "tsx minecraft-mcp-server.ts --transport httpStream",
         "mcp-dev": "npx fastmcp dev minecraft-mcp-server.ts",
         "mcp-inspect": "npx fastmcp inspect minecraft-mcp-server.ts",
         "mcp-test": "tsx test-mcp-server.js",

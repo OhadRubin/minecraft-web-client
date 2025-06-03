@@ -536,15 +536,93 @@ server.addTool({
 // Start the server
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4000;
 
-server.start({
-    transportType: "httpStream",
-    httpStream: {
-        port: PORT,
-    },
-}).then(() => {
-    console.log(`Minecraft MCP Server started on port ${PORT}`);
-    console.log(`Connect to: http://localhost:${PORT}/stream`);
-    console.log(`Health check: http://localhost:${PORT}/health`);
+// Parse command line arguments for transport type
+function parseArgs() {
+    const args = process.argv.slice(2);
+    let transportType: "httpStream" | "stdio" = "httpStream"; // default
+
+    for (let i = 0; i < args.length; i++) {
+        if (args[i] === "--transport" || args[i] === "-t") {
+            const nextArg = args[i + 1];
+            if (nextArg === "httpStream" || nextArg === "stdio") {
+                transportType = nextArg;
+            } else {
+                console.error(`Invalid transport type: ${nextArg}. Use 'httpStream' or 'stdio'.`);
+                process.exit(1);
+            }
+            i++; // Skip the next argument since we consumed it
+        } else if (args[i] === "--help" || args[i] === "-h") {
+            console.log(`
+Minecraft MCP Server
+
+Usage: tsx minecraft-mcp-server.ts [options]
+       pnpm mcp-server [-- options]
+
+Options:
+  -t, --transport <type>  Transport type: 'httpStream' or 'stdio' (default: httpStream)
+  -h, --help             Show this help message
+
+Examples:
+  tsx minecraft-mcp-server.ts --transport stdio
+  tsx minecraft-mcp-server.ts -t httpStream
+  pnpm mcp-server -- --transport stdio
+  pnpm mcp-server -- -t httpStream
+  pnpm mcp-server  # uses default (httpStream)
+            `);
+            process.exit(0);
+        }
+    }
+
+    return { transportType };
+}
+
+const { transportType } = parseArgs();
+
+console.log(`Starting Minecraft MCP Server with ${transportType} transport...`);
+// pnpm mcp-server -- --transport stdio
+// pnpm mcp-server 
+const startConfig = transportType === "httpStream"
+    ? {
+        transportType: transportType,
+        httpStream: {
+            port: PORT,
+        },
+    }
+    : {
+        transportType: transportType,
+    };
+
+// Add minecraft-controller to your mcp.json config:
+if (transportType === "stdio") {
+    console.log(`For Claude/LLM desktop clients, add this to your mcp.json config:
+{
+  "mcpServers": {
+    "minecraft-controller": {
+      "command": "npx",
+      "args": ["tsx", "minecraft-mcp-server.ts", "--transport", "stdio"],
+    }
+  }
+}`);
+} else {
+    console.log(`For web clients, add this to your mcp.json config:
+{
+  "mcpServers": {
+    "minecraft-controller": {
+      "transport": "sse",
+      "url": "http://localhost:${PORT}/sse"
+    }
+  }
+}`);
+}
+
+server.start(startConfig).then(() => {
+    if (transportType === "httpStream") {
+        console.log(`Minecraft MCP Server started on port ${PORT}`);
+        console.log(`Connect to: http://localhost:${PORT}/stream`);
+        console.log(`Health check: http://localhost:${PORT}/health`);
+    } else {
+        console.log(`Minecraft MCP Server started with stdio transport`);
+    }
 }).catch((error) => {
     console.error("Failed to start server:", error);
     process.exit(1);
