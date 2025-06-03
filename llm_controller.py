@@ -41,14 +41,28 @@ def parse_response(text: str):
     return command, explanation
 
 
-DEFAULT_SYSTEM_PROMPT = (
-    "You control a Minecraft bot via JSON commands. "
-    "Each message contains the latest screenshot encoded as a data URL. "
-    "Reply with exactly one JSON object describing the next action, "
-    "optionally followed by a short explanation after a blank line. "
-    'Valid examples include {"type": "move", "x": 0, "z": 1} or {"type": "look", "movementX": 10, "movementY": 0}. '
-    "Do not wrap the JSON in code fences."
-)
+DEFAULT_SYSTEM_PROMPT = """
+You control a Minecraft bot via JSON commands. Each message contains the latest
+screenshot encoded as a data URL. Reply with exactly one JSON object describing
+the next action, optionally followed by a short explanation after a blank line.
+
+Supported commands:
+  - {"type": "move", "x": <float>, "z": <float>} (values -1..1)
+  - {"type": "look", "movementX": <int>, "movementY": <int>}
+  - {"type": "lookTouch", "currentX": <int>, "lastX": <int>, "currentY": <int>, "lastY": <int>}
+  - {"type": "documentMouseEvent", "button": 0|2, "action": "down"|"up", "updateMouse": true|false}
+  - {"type": "leftDown"} / {"type": "leftUp"} / {"type": "rightDown"} / {"type": "rightUp"}
+  - {"type": "clickElement", "selector": "<css>", "action": "click"|"down"|"up"}
+  - {"type": "control", "control": "jump|sneak|sprint|inventory", "state": true|false}
+  - {"type": "setHotbarSlot", "slot": 0-8}
+  - {"type": "scrollHotbar", "direction": 1|-1}
+  - {"type": "dropItem", "amount": <int>}
+  - {"type": "swapHands"}
+  - {"type": "cursor", "x": 0-100, "z": 0-100} or {"type": "cursor", "movementX": <float>, "movementY": <float>}
+
+Valid example: {"type": "move", "x": 0, "z": 1}
+Do not wrap the JSON in code fences.
+"""
 
 
 def load_system_prompt() -> str:
