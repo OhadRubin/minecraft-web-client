@@ -11,8 +11,8 @@ from typing import Optional, Tuple
 pygame.init()
 
 # Constants
-WINDOW_WIDTH = 1000  # Increased width for more buttons
-WINDOW_HEIGHT = 600
+WINDOW_WIDTH = 1600  # Increased from 1000
+WINDOW_HEIGHT = 900  # Increased from 600
 FPS = 60
 
 # Colors
@@ -237,11 +237,16 @@ class TouchArea:
 
     def draw(self, surface):
         color = GREEN if self.is_touching else DARK_GRAY
-        pygame.draw.rect(surface, color, self.rect, 2)
+        pygame.draw.rect(surface, color, self.rect, 3)  # Thicker border for visibility
+
+        # Draw a subtle fill for better visibility
+        fill_color = (0, 64, 0) if self.is_touching else (32, 32, 32)
+        pygame.draw.rect(surface, fill_color, self.rect)
+        pygame.draw.rect(surface, color, self.rect, 3)  # Border on top
 
         # Draw label
-        font = pygame.font.Font(None, 24)
-        text = font.render("Camera Look Area", True, WHITE)
+        font = pygame.font.Font(None, 28)  # Larger font for bigger area
+        text = font.render("Camera Look Area - Drag to Look Around", True, WHITE)
         text_rect = text.get_rect(center=self.rect.center)
         surface.blit(text, text_rect)
 
@@ -254,16 +259,20 @@ class MinecraftController:
         self.running = True
 
         # UI Elements
-        self.movement_joystick = VirtualJoystick(150, WINDOW_HEIGHT - 150, 80)
+        self.movement_joystick = VirtualJoystick(
+            150, WINDOW_HEIGHT - 200, 100
+        )  # Larger joystick, adjusted position
         self.keyboard_movement = KeyboardMovement()
-        self.camera_area = TouchArea(350, 50, 350, 250)
+        self.camera_area = TouchArea(
+            400, 50, 800, 500
+        )  # Much larger camera area: 800x500
 
         # Action Buttons
-        button_width = 80
-        button_height = 35
-        start_x = 750
-        start_y = 350
-        spacing = 45
+        button_width = 100  # Slightly larger buttons
+        button_height = 40
+        start_x = 1300  # Moved further right for larger window
+        start_y = 600  # Moved down to avoid camera area
+        spacing = 50
 
         self.left_click_btn = Button(
             start_x, start_y, button_width, button_height, "Left Click", RED
@@ -301,6 +310,31 @@ class MinecraftController:
             GRAY,
         )
 
+        # Hotbar Slot Buttons (1-9)
+        hotbar_button_width = 50
+        hotbar_button_height = 40
+        hotbar_start_x = 50
+        hotbar_y = WINDOW_HEIGHT - 60  # Bottom of screen
+        hotbar_spacing = 55
+
+        self.hotbar_buttons = []
+        for i in range(9):
+            slot_number = i + 1  # Display 1-9 for user, but use 0-8 internally
+            button = Button(
+                hotbar_start_x + i * hotbar_spacing,
+                hotbar_y,
+                hotbar_button_width,
+                hotbar_button_height,
+                str(slot_number),
+                DARK_GRAY,
+                WHITE,
+            )
+            self.hotbar_buttons.append(button)
+
+        # State tracking for hotbar
+        self.current_hotbar_slot = 0  # Currently selected slot (0-8)
+        self.last_hotbar_slot = -1  # Track last set slot to avoid duplicate commands
+
         # WebSocket connection
         self.websocket: Optional[websockets.WebSocketServerProtocol] = None
         self.connected = False
@@ -321,6 +355,7 @@ class MinecraftController:
         self._tab_pressed = False
         self._z_pressed = False
         self._x_pressed = False
+        self._space_pressed = False
 
     async def connect_websocket(self):
         try:
@@ -478,6 +513,15 @@ class MinecraftController:
         command = {"type": "control", "control": "inventory", "state": False}
         self.send_command_sync(command)
 
+    def handle_hotbar_slot(self, slot: int):
+        """Handle hotbar slot selection (slot should be 0-8)"""
+        if 0 <= slot <= 8 and slot != self.last_hotbar_slot:
+            print(f"HOTBAR SLOT {slot + 1} - sending command")
+            command = {"type": "setHotbarSlot", "slot": slot}
+            self.send_command_sync(command)
+            self.current_hotbar_slot = slot
+            self.last_hotbar_slot = slot
+
     def draw_ui(self):
         self.screen.fill(BLACK)
 
@@ -498,7 +542,7 @@ class MinecraftController:
             move_label,
             (
                 self.movement_joystick.center_x - 40,
-                self.movement_joystick.center_y + 100,
+                self.movement_joystick.center_y + 120,  # Adjusted for larger joystick
             ),
         )
 
@@ -513,6 +557,24 @@ class MinecraftController:
         self.sprint_btn.draw(self.screen)
         self.inventory_btn.draw(self.screen)
 
+        # Draw hotbar slot buttons
+        for i, button in enumerate(self.hotbar_buttons):
+            # Highlight the currently selected slot
+            if i == self.current_hotbar_slot:
+                # Draw a highlight background for the selected slot
+                highlight_rect = pygame.Rect(
+                    button.rect.x - 3,
+                    button.rect.y - 3,
+                    button.rect.width + 6,
+                    button.rect.height + 6,
+                )
+                pygame.draw.rect(self.screen, YELLOW, highlight_rect, 3)
+            button.draw(self.screen)
+
+        # Draw hotbar label
+        hotbar_label = self.small_font.render("Hotbar Slots (1-9)", True, WHITE)
+        self.screen.blit(hotbar_label, (50, WINDOW_HEIGHT - 85))
+
         # Draw instructions
         instructions = [
             "WASD: Move character (keyboard)",
@@ -520,12 +582,15 @@ class MinecraftController:
             "Camera area: Look around (drag)",
             "Buttons: Click actions",
             "Ctrl/Z: Left click | Tab/X: Right click",
+            "Spacebar: Jump | 1-9: Hotbar slots",
             "ESC: Quit | R: Reconnect",
         ]
 
         for i, instruction in enumerate(instructions):
             text = self.small_font.render(instruction, True, WHITE)
-            self.screen.blit(text, (10, WINDOW_HEIGHT - 120 + i * 20))
+            self.screen.blit(
+                text, (10, WINDOW_HEIGHT - 150 + i * 22)
+            )  # Adjusted spacing and position
 
         # Draw current movement values
         move_text = self.small_font.render(
@@ -533,7 +598,7 @@ class MinecraftController:
             True,
             WHITE,
         )
-        self.screen.blit(move_text, (350, 320))
+        self.screen.blit(move_text, (400, 570))  # Moved down to be below camera area
 
         # Draw keyboard status
         keyboard_status = (
@@ -542,7 +607,7 @@ class MinecraftController:
             else "WASD Inactive"
         )
         kb_text = self.small_font.render(f"Keyboard: {keyboard_status}", True, WHITE)
-        self.screen.blit(kb_text, (350, 340))
+        self.screen.blit(kb_text, (400, 590))  # Moved down
 
         # Draw keyboard shortcut status
         shortcut_status = []
@@ -554,12 +619,20 @@ class MinecraftController:
             shortcut_status.append("Z")
         if self._x_pressed:
             shortcut_status.append("X")
+        if self._space_pressed:
+            shortcut_status.append("Space")
 
         shortcut_text = "Shortcuts: " + (
             ", ".join(shortcut_status) if shortcut_status else "None"
         )
         shortcut_display = self.small_font.render(shortcut_text, True, WHITE)
-        self.screen.blit(shortcut_display, (350, 360))
+        self.screen.blit(shortcut_display, (400, 610))  # Moved down
+
+        # Draw current hotbar slot
+        hotbar_status = self.small_font.render(
+            f"Hotbar Slot: {self.current_hotbar_slot + 1}/9", True, WHITE
+        )
+        self.screen.blit(hotbar_status, (400, 630))  # Below shortcuts
 
         pygame.display.flip()
 
@@ -602,6 +675,9 @@ class MinecraftController:
             z_pressed = keys_pressed[pygame.K_z]
             x_pressed = keys_pressed[pygame.K_x]
 
+            # Add spacebar for jumping
+            space_pressed = keys_pressed[pygame.K_SPACE]
+
             # Combine all left click inputs
             left_click_input = ctrl_pressed or z_pressed
             # Combine all right click inputs
@@ -612,6 +688,7 @@ class MinecraftController:
             self._tab_pressed = tab_pressed
             self._z_pressed = z_pressed
             self._x_pressed = x_pressed
+            self._space_pressed = space_pressed
 
             # Debug output for keyboard detection
             if ctrl_pressed and not hasattr(self, "_last_ctrl_pressed"):
@@ -643,6 +720,14 @@ class MinecraftController:
                 print("X released detected!")
                 delattr(self, "_last_x_pressed")
 
+            # Debug for spacebar
+            if space_pressed and not hasattr(self, "_last_space_pressed"):
+                print("Spacebar pressed detected! (Jump)")
+                self._last_space_pressed = True
+            elif not space_pressed and hasattr(self, "_last_space_pressed"):
+                print("Spacebar released detected!")
+                delattr(self, "_last_space_pressed")
+
             # Handle movement joystick
             joystick_move_x, joystick_move_y = self.movement_joystick.handle_mouse(
                 mouse_pos, mouse_pressed
@@ -671,7 +756,7 @@ class MinecraftController:
 
             # Handle jump button - check both press and release
             self.jump_btn.handle_mouse(mouse_pos, mouse_pressed)
-            self.handle_jump(self.jump_btn.is_pressed)
+            self.handle_jump(self.jump_btn.is_pressed or space_pressed)
 
             # Handle toggle buttons - only send command when toggled
             if self.sneak_btn.handle_mouse(mouse_pos, mouse_pressed):
@@ -682,6 +767,36 @@ class MinecraftController:
 
             if self.inventory_btn.handle_mouse(mouse_pos, mouse_pressed):
                 self.handle_inventory()
+
+            # Handle hotbar slot buttons
+            for i, button in enumerate(self.hotbar_buttons):
+                if button.handle_mouse(mouse_pos, mouse_pressed):
+                    self.handle_hotbar_slot(i)  # i is already 0-8
+
+            # Handle keyboard shortcuts for hotbar slots (1-9 keys)
+            hotbar_keys = [
+                pygame.K_1,
+                pygame.K_2,
+                pygame.K_3,
+                pygame.K_4,
+                pygame.K_5,
+                pygame.K_6,
+                pygame.K_7,
+                pygame.K_8,
+                pygame.K_9,
+            ]
+
+            for i, key in enumerate(hotbar_keys):
+                key_pressed = keys_pressed[key]
+                last_key_attr = f"_last_hotbar_{i}_pressed"
+
+                # Only trigger on key press (not hold)
+                if key_pressed and not hasattr(self, last_key_attr):
+                    print(f"Hotbar key {i + 1} pressed!")
+                    self.handle_hotbar_slot(i)  # i is already 0-8
+                    setattr(self, last_key_attr, True)
+                elif not key_pressed and hasattr(self, last_key_attr):
+                    delattr(self, last_key_attr)
 
             # Draw everything
             self.draw_ui()

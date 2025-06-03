@@ -13,6 +13,7 @@ export interface MouseCommand {
   | 'lookTouch'
   | 'clickElement'
   | 'documentMouseEvent'
+  | 'setHotbarSlot'
   control?: string
   state?: boolean
   message?: string
@@ -29,6 +30,8 @@ export interface MouseCommand {
   // documentMouseEvent fields
   button?: 0 | 2
   updateMouse?: boolean
+  // setHotbarSlot fields
+  slot?: number
 }
 
 class TouchEvaluator {
@@ -261,6 +264,19 @@ class TouchEvaluator {
         }
         break
       }
+      case 'setHotbarSlot':
+        try {
+          console.log(`[WsCommandClient] Setting hotbar slot to ${cmd.slot}`)
+          if (cmd.slot !== undefined && cmd.slot >= 0 && cmd.slot <= 8) {
+            this.bot.setQuickBarSlot(cmd.slot)
+            console.log(`[WsCommandClient] Successfully set hotbar slot to ${cmd.slot}`)
+          } else {
+            console.error(`[WsCommandClient] Invalid hotbar slot: ${cmd.slot}. Must be 0-8.`)
+          }
+        } catch (error) {
+          console.error('[WsCommandClient] Error setting hotbar slot:', error)
+        }
+        break
     }
   }
 }
