@@ -116,29 +116,56 @@ async function captureScreenshot(): Promise<string> {
 
         return new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
+                cleanup();
                 reject(new Error("Screenshot timeout"));
-            }, 5000);
+            }, 10000); // Increased timeout to 10 seconds
+
+            let resolved = false;
+
+            const cleanup = () => {
+                if (ws && handleMessage) {
+                    ws.off('message', handleMessage);
+                }
+                clearTimeout(timeout);
+            };
 
             const handleMessage = (data: Buffer) => {
+                if (resolved) return; // Prevent multiple resolutions
+
                 try {
                     const message = JSON.parse(data.toString());
-                    if (message.type === 'screenshot' && message.data) {
-                        clearTimeout(timeout);
-                        if (ws) {
-                            ws.off('message', handleMessage);
+                    console.log('MCP Server received message:', message.type);
+
+                    if (message.type === 'screenshot') {
+                        resolved = true;
+                        cleanup();
+
+                        if (message.error) {
+                            reject(new Error(`Screenshot failed: ${message.error}`));
+                        } else if (message.data) {
+                            resolve(message.data);
+                        } else {
+                            reject(new Error("Screenshot response missing data"));
                         }
-                        resolve(message.data);
                     }
                 } catch (error) {
                     // Ignore parsing errors for other messages
+                    console.log('Failed to parse WebSocket message:', error);
                 }
             };
 
             if (ws) {
                 ws.on('message', handleMessage);
-                ws.send(JSON.stringify({ type: "getScreenshot" }));
+
+                // Add a small delay before sending the command to ensure listener is ready
+                setTimeout(() => {
+                    if (ws && !resolved) {
+                        console.log('MCP Server requesting screenshot...');
+                        ws.send(JSON.stringify({ type: "getScreenshot" }));
+                    }
+                }, 100);
             } else {
-                clearTimeout(timeout);
+                cleanup();
                 reject(new Error("WebSocket connection lost"));
             }
         });

@@ -390,9 +390,34 @@ class TouchEvaluator {
             break
           }
 
-          // Capture canvas as base64 PNG
-          const dataUrl = canvas.toDataURL('image/png')
-          const base64Data = dataUrl.split(',')[1] // Remove data:image/png;base64, prefix
+          // Wait for the next frame to ensure rendering is complete
+          await new Promise(resolve => requestAnimationFrame(resolve))
+
+          // Create a timeout promise to prevent hanging
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Screenshot capture timeout')), 5000)
+          })
+
+          // Create the screenshot capture promise
+          const capturePromise = new Promise<string>((resolve, reject) => {
+            try {
+              // Use a small delay to ensure the frame is fully rendered
+              setTimeout(() => {
+                try {
+                  const dataUrl = canvas.toDataURL('image/png', 0.8) // Reduced quality for faster capture
+                  const base64Data = dataUrl.split(',')[1] // Remove data:image/png;base64, prefix
+                  resolve(base64Data)
+                } catch (error) {
+                  reject(error)
+                }
+              }, 50)
+            } catch (error) {
+              reject(error)
+            }
+          })
+
+          // Race between capture and timeout
+          const base64Data = await Promise.race([capturePromise, timeoutPromise])
 
           console.log('[WsCommandClient] Screenshot captured successfully')
           if (this.ws) {
