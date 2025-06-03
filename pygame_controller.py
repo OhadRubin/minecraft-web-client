@@ -316,6 +316,12 @@ class MinecraftController:
         self.font = pygame.font.Font(None, 36)
         self.small_font = pygame.font.Font(None, 24)
 
+        # Keyboard shortcut states
+        self._ctrl_pressed = False
+        self._tab_pressed = False
+        self._z_pressed = False
+        self._x_pressed = False
+
     async def connect_websocket(self):
         try:
             uri = "ws://localhost:8081"
@@ -388,6 +394,7 @@ class MinecraftController:
 
     def handle_left_click(self, pressed: bool):
         if pressed and not self.left_clicking:
+            print("LEFT CLICK DOWN - sending command")
             self.send_command_sync(
                 {
                     "type": "documentMouseEvent",
@@ -398,6 +405,7 @@ class MinecraftController:
             )
             self.left_clicking = True
         elif not pressed and self.left_clicking:
+            print("LEFT CLICK UP - sending command")
             self.send_command_sync(
                 {
                     "type": "documentMouseEvent",
@@ -410,6 +418,7 @@ class MinecraftController:
 
     def handle_right_click(self, pressed: bool):
         if pressed and not self.right_clicking:
+            print("RIGHT CLICK DOWN - sending command")
             self.send_command_sync(
                 {
                     "type": "documentMouseEvent",
@@ -420,6 +429,7 @@ class MinecraftController:
             )
             self.right_clicking = True
         elif not pressed and self.right_clicking:
+            print("RIGHT CLICK UP - sending command")
             self.send_command_sync(
                 {
                     "type": "documentMouseEvent",
@@ -509,6 +519,7 @@ class MinecraftController:
             "Left joystick: Move character (mouse)",
             "Camera area: Look around (drag)",
             "Buttons: Click actions",
+            "Ctrl/Z: Left click | Tab/X: Right click",
             "ESC: Quit | R: Reconnect",
         ]
 
@@ -532,6 +543,23 @@ class MinecraftController:
         )
         kb_text = self.small_font.render(f"Keyboard: {keyboard_status}", True, WHITE)
         self.screen.blit(kb_text, (350, 340))
+
+        # Draw keyboard shortcut status
+        shortcut_status = []
+        if self._ctrl_pressed:
+            shortcut_status.append("Ctrl")
+        if self._tab_pressed:
+            shortcut_status.append("Tab")
+        if self._z_pressed:
+            shortcut_status.append("Z")
+        if self._x_pressed:
+            shortcut_status.append("X")
+
+        shortcut_text = "Shortcuts: " + (
+            ", ".join(shortcut_status) if shortcut_status else "None"
+        )
+        shortcut_display = self.small_font.render(shortcut_text, True, WHITE)
+        self.screen.blit(shortcut_display, (350, 360))
 
         pygame.display.flip()
 
@@ -566,6 +594,55 @@ class MinecraftController:
                 keys_pressed
             )
 
+            # Handle keyboard shortcuts for clicking
+            ctrl_pressed = keys_pressed[pygame.K_LCTRL] or keys_pressed[pygame.K_RCTRL]
+            tab_pressed = keys_pressed[pygame.K_TAB]
+
+            # Add alternative keys that are less likely to be intercepted
+            z_pressed = keys_pressed[pygame.K_z]
+            x_pressed = keys_pressed[pygame.K_x]
+
+            # Combine all left click inputs
+            left_click_input = ctrl_pressed or z_pressed
+            # Combine all right click inputs
+            right_click_input = tab_pressed or x_pressed
+
+            # Store keyboard shortcut states for UI display
+            self._ctrl_pressed = ctrl_pressed
+            self._tab_pressed = tab_pressed
+            self._z_pressed = z_pressed
+            self._x_pressed = x_pressed
+
+            # Debug output for keyboard detection
+            if ctrl_pressed and not hasattr(self, "_last_ctrl_pressed"):
+                print("Ctrl pressed detected!")
+                self._last_ctrl_pressed = True
+            elif not ctrl_pressed and hasattr(self, "_last_ctrl_pressed"):
+                print("Ctrl released detected!")
+                delattr(self, "_last_ctrl_pressed")
+
+            if tab_pressed and not hasattr(self, "_last_tab_pressed"):
+                print("Tab pressed detected!")
+                self._last_tab_pressed = True
+            elif not tab_pressed and hasattr(self, "_last_tab_pressed"):
+                print("Tab released detected!")
+                delattr(self, "_last_tab_pressed")
+
+            # Debug for alternative keys
+            if z_pressed and not hasattr(self, "_last_z_pressed"):
+                print("Z pressed detected! (Left click)")
+                self._last_z_pressed = True
+            elif not z_pressed and hasattr(self, "_last_z_pressed"):
+                print("Z released detected!")
+                delattr(self, "_last_z_pressed")
+
+            if x_pressed and not hasattr(self, "_last_x_pressed"):
+                print("X pressed detected! (Right click)")
+                self._last_x_pressed = True
+            elif not x_pressed and hasattr(self, "_last_x_pressed"):
+                print("X released detected!")
+                delattr(self, "_last_x_pressed")
+
             # Handle movement joystick
             joystick_move_x, joystick_move_y = self.movement_joystick.handle_mouse(
                 mouse_pos, mouse_pressed
@@ -584,11 +661,13 @@ class MinecraftController:
             # Handle action buttons
             if self.left_click_btn.handle_mouse(mouse_pos, mouse_pressed):
                 pass  # Handle on hold/release
-            self.handle_left_click(self.left_click_btn.is_pressed)
+            self.handle_left_click(self.left_click_btn.is_pressed or left_click_input)
 
             if self.right_click_btn.handle_mouse(mouse_pos, mouse_pressed):
                 pass  # Handle on hold/release
-            self.handle_right_click(self.right_click_btn.is_pressed)
+            self.handle_right_click(
+                self.right_click_btn.is_pressed or right_click_input
+            )
 
             # Handle jump button - check both press and release
             self.jump_btn.handle_mouse(mouse_pos, mouse_pressed)
