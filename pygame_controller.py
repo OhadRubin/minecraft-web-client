@@ -357,6 +357,7 @@ class MinecraftController:
         self.websocket: Optional[websockets.WebSocketServerProtocol] = None
         self.connected = False
         self.connection_thread = None
+        self.loop = None  # Store the event loop for cross-thread communication
 
         # State tracking
         self.last_movement = (0.0, 0.0)
@@ -385,6 +386,11 @@ class MinecraftController:
             self.connected = True
             print("Connected to Minecraft Web Client!")
 
+            # Register as pygame client
+            init_message = {"init": "pygame"}
+            await self.websocket.send(json.dumps(init_message))
+            print("Registered as pygame client")
+
             # Keep connection alive
             while self.connected and self.running:
                 await asyncio.sleep(0.1)
@@ -397,28 +403,31 @@ class MinecraftController:
         """Start WebSocket connection in a separate thread"""
 
         def run_async():
-            asyncio.run(self.connect_websocket())
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+            self.loop.run_until_complete(self.connect_websocket())
 
         self.connection_thread = threading.Thread(target=run_async, daemon=True)
         self.connection_thread.start()
 
-    async def send_command(self, command: dict):
+    async def send_command_async(self, command: dict):
+        """Async method to send command"""
         if self.websocket and self.connected:
             try:
                 await self.websocket.send(json.dumps(command))
+                print(f"Sent command: {command}")
             except Exception as e:
                 print(f"Error sending command: {e}")
                 self.connected = False
 
     def send_command_sync(self, command: dict):
-        """Send command synchronously from main thread"""
-        if self.websocket and self.connected:
+        """Send command instantly from main thread"""
+        if self.connected and self.loop and not self.loop.is_closed():
             try:
-                # Use a simple approach - create new event loop for this thread
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                loop.run_until_complete(self.websocket.send(json.dumps(command)))
-                loop.close()
+                future = asyncio.run_coroutine_threadsafe(
+                    self.send_command_async(command), self.loop
+                )
+                # Don't wait for the result to keep it instant
             except Exception as e:
                 print(f"Error sending command: {e}")
                 self.connected = False
@@ -474,25 +483,11 @@ class MinecraftController:
     def handle_right_click(self, pressed: bool):
         if pressed and not self.right_clicking:
             print("RIGHT CLICK DOWN - sending command")
-            self.send_command_sync(
-                {
-                    "type": "documentMouseEvent",
-                    "button": 2,
-                    "action": "down",
-                    "updateMouse": True,
-                }
-            )
+            self.send_command_sync({"type": "rightDown"})
             self.right_clicking = True
         elif not pressed and self.right_clicking:
             print("RIGHT CLICK UP - sending command")
-            self.send_command_sync(
-                {
-                    "type": "documentMouseEvent",
-                    "button": 2,
-                    "action": "up",
-                    "updateMouse": False,
-                }
-            )
+            self.send_command_sync({"type": "rightUp"})
             self.right_clicking = False
 
     def handle_jump(self, pressed: bool):

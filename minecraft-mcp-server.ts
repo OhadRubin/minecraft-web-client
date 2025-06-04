@@ -605,6 +605,10 @@ if (transportType === "stdio") {
 }`);
 } else {
     console.log(`For web clients, add this to your mcp.json config:
+
+tsx /Users/ohadr/scrape_lm_copy/minecraft-web-client/minecraft-mcp-server.ts --transport stdio
+
+
 {
   "mcpServers": {
     "minecraft-controller": {
@@ -615,14 +619,14 @@ if (transportType === "stdio") {
 }`);
 }
 
+if (transportType === "httpStream") {
+    console.log(`BMinecraft MCP Server started on port ${PORT}`);
+    console.log(`Connect to: http://localhost:${PORT}/stream`);
+    console.log(`Health check: http://localhost:${PORT}/health`);
+} else {
+    console.log(`Minecraft MCP Server started with stdio transport`);
+}
 server.start(startConfig).then(() => {
-    if (transportType === "httpStream") {
-        console.log(`Minecraft MCP Server started on port ${PORT}`);
-        console.log(`Connect to: http://localhost:${PORT}/stream`);
-        console.log(`Health check: http://localhost:${PORT}/health`);
-    } else {
-        console.log(`Minecraft MCP Server started with stdio transport`);
-    }
 }).catch((error) => {
     console.error("Failed to start server:", error);
     process.exit(1);

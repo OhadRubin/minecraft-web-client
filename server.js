@@ -15,6 +15,34 @@ try {
     siModule = require('systeminformation')
 } catch (err) {}
 
+// Helper function to check if a message contains screenshot data
+function isScreenshotMessage(message) {
+    if (typeof message === 'object' && message !== null) {
+        // Check for screenshot-related message types
+        if (message.type === 'screenshot' || message.type === 'getScreenshot') {
+            return true
+        }
+        // Check if message contains large screenshot data
+        if (message.data && typeof message.data === 'string' && 
+            (message.data.startsWith('data:image/') || message.data.length > 10000)) {
+            return true
+        }
+    }
+    return false
+}
+
+// Helper function to create a safe version of a message for console logging
+function createSafeMessageForConsole(message) {
+    if (isScreenshotMessage(message)) {
+        const dataSize = message.data ? message.data.length : 0
+        return {
+            ...message,
+            data: `[SCREENSHOT_DATA_FILTERED] - ${dataSize} bytes`
+        }
+    }
+    return message
+}
+
 // Create our app
 const app = express()
 console.log('initWsLogger')
@@ -90,6 +118,7 @@ const server = app.listen(httpPort, async function() {
 const wsServer = http.createServer()
 const botClients = new Set()
 const mcpClients = new Set()
+const pygameClients = new Set()
 
 // Setup WebSocket command server on separate port
 const wss = new WebSocket.Server({ server: wsServer })
@@ -98,18 +127,22 @@ console.log(`[WebSocket] WebSocket server initialized`)
 
 wss.on('connection', (ws, req) => {
     console.log(`[WebSocket] New connection established. Total connections: ${wss.clients.size}`)
-    console.log(`[WebSocket] Current bot clients: ${botClients.size}, MCP clients: ${mcpClients.size}`)
+    console.log(`[WebSocket] Current bot clients: ${botClients.size}, MCP clients: ${mcpClients.size}, pygame clients: ${pygameClients.size}`)
     logMessage('connect', req.socket.remoteAddress)
     ws.remoteAddress = req.socket.remoteAddress
 
     ws.on('message', data => {
         try {
             const dataStr = data.toString()
-            console.log(`[WebSocket] Received raw message: ${dataStr}`)
+            // Filter raw message for console display
+            const safeRawMessage = dataStr.includes('data:image/') || dataStr.length > 1000 ? 
+                `[SCREENSHOT_DATA_FILTERED] - Raw message filtered (${dataStr.length} bytes)` : 
+                dataStr
+            console.log(`[WebSocket] Received raw message: ${safeRawMessage}`)
             logMessage('incoming', dataStr)
 
             const msg = JSON.parse(dataStr)
-            console.log(`[WebSocket] Parsed message:`, msg)
+            console.log(`[WebSocket] Parsed message:`, createSafeMessageForConsole(msg))
 
             // Handle client registration
             if (msg.init === 'bot') {
@@ -130,6 +163,17 @@ wss.on('connection', (ws, req) => {
                 ws.on('close', () => {
                     mcpClients.delete(ws)
                     console.log(`[WebSocket] MCP client disconnected. Remaining MCP clients: ${mcpClients.size}`)
+                })
+                return
+            }
+
+            if (msg.init === 'pygame') {
+                pygameClients.add(ws)
+                console.log(`[WebSocket] Pygame client registered! Total pygame clients: ${pygameClients.size}`)
+
+                ws.on('close', () => {
+                    pygameClients.delete(ws)
+                    console.log(`[WebSocket] Pygame client disconnected. Remaining pygame clients: ${pygameClients.size}`)
                 })
                 return
             }
@@ -184,13 +228,42 @@ wss.on('connection', (ws, req) => {
                     console.warn(`[WebSocket] ⚠️  Make sure you have a mineflayer bot connected with {init: 'bot'}`)
                 }
 
+            } else if (pygameClients.has(ws)) {
+                // Message from pygame client - forward to bot clients (same as MCP clients)
+                console.log(`[WebSocket] Forwarding pygame command to ${botClients.size} bot client(s)`)
+                const str = JSON.stringify(msg)
+                let forwardedCount = 0
+
+                logMessage('outgoing', str)
+
+                for (const client of botClients) {
+                    if (client.readyState === WebSocket.OPEN) {
+                        client.send(str)
+                        forwardedCount++
+                        console.log(`[WebSocket] Pygame command forwarded to bot client ${forwardedCount}`)
+                    } else {
+                        console.log(`[WebSocket] Skipping bot client - connection not open (readyState: ${client.readyState})`)
+                    }
+                }
+
+                console.log(`[WebSocket] Successfully forwarded pygame command to ${forwardedCount}/${botClients.size} bot clients`)
+
+                if (forwardedCount === 0) {
+                    console.warn(`[WebSocket] ⚠️  No bot clients available to receive the pygame command!`)
+                    console.warn(`[WebSocket] ⚠️  Make sure you have a Minecraft web client connected`)
+                }
+
             } else {
                 console.warn(`[WebSocket] ⚠️  Unknown client type - message from unregistered client!`)
             }
 
         } catch (err) {
             console.error('[WebSocket] Error processing message:', err)
-            console.error('[WebSocket] Raw data was:', data.toString())
+            const rawData = data.toString()
+            const safeErrorData = rawData.includes('data:image/') || rawData.length > 1000 ? 
+                `[SCREENSHOT_DATA_FILTERED] - Error data filtered (${rawData.length} bytes)` : 
+                rawData
+            console.error('[WebSocket] Raw data was:', safeErrorData)
         }
     })
 

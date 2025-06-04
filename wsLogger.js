@@ -19,6 +19,7 @@ const defaultOptions = {
     fallbackFile: process.env.WS_LOGGER_FALLBACK_FILE || path.join(__dirname, 'ws_logs.fallback.log'),
     enabled: process.env.WS_LOGGER_ENABLED !== 'false',
     useFileLogging: process.env.WS_LOGGER_USE_FILE_ONLY === 'true' || true, // Default to file logging for now
+    filterScreenshots: process.env.WS_LOGGER_FILTER_SCREENSHOTS !== 'false', // Default to filtering screenshots
 }
 
 let options = {...defaultOptions }
@@ -41,9 +42,15 @@ function initWsLogger(userOptions = {}) {
         }
     }
 
+    // Ensure boolean options are properly set
+    if (typeof options.filterScreenshots !== 'boolean') {
+        options.filterScreenshots = defaultOptions.filterScreenshots
+    }
+
     // If file logging is explicitly requested or SQLite fails, use file logging
     if (options.useFileLogging) {
         console.log('[wsLogger] Using file-based logging (SQLite disabled)')
+        console.log(`[wsLogger] Screenshot filtering: ${options.filterScreenshots ? 'enabled' : 'disabled'}`)
         fallbackStream = fs.createWriteStream(options.fallbackFile, { flags: 'a' })
         enabled = true
         return true
@@ -68,6 +75,7 @@ function initWsLogger(userOptions = {}) {
       )`)
         })
         console.log('[wsLogger] SQLite database initialized successfully')
+        console.log(`[wsLogger] Screenshot filtering: ${options.filterScreenshots ? 'enabled' : 'disabled'}`)
     } catch (err) {
         console.error('[wsLogger] Failed to initialize database:', err)
         events.emit('error', err)
@@ -178,9 +186,44 @@ function flushLogs(callback) {
     }
 }
 
+function isScreenshotMessage(message) {
+    try {
+        // Check if message is a string and try to parse it as JSON
+        if (typeof message === 'string') {
+            const parsed = JSON.parse(message)
+                // Check for screenshot-related message types
+            if (parsed.type === 'screenshot' || parsed.type === 'getScreenshot') {
+                return true
+            }
+            // Check if message contains screenshot data (base64 image data)
+            if (parsed.data && typeof parsed.data === 'string' &&
+                (parsed.data.startsWith('data:image/') || parsed.data.length > 10000)) {
+                return true
+            }
+        }
+    } catch (err) {
+        // If parsing fails, check if the raw message looks like base64 image data
+        if (typeof message === 'string' &&
+            (message.includes('data:image/') ||
+                (message.length > 10000 && message.includes('screenshot')))) {
+            return true
+        }
+    }
+    return false
+}
+
 function logMessage(direction, message) {
     if (!enabled) return
-    pendingLogs.push({ timestamp: Date.now(), direction, message })
+
+    // Skip logging screenshot messages to prevent large binary data in logs (if filtering is enabled)
+    if (options.filterScreenshots && isScreenshotMessage(message)) {
+        // Log a placeholder instead of the full screenshot data
+        const placeholder = `[SCREENSHOT_DATA_FILTERED] ${direction} - Screenshot message blocked from logging (${message.length} bytes)`
+        pendingLogs.push({ timestamp: Date.now(), direction, message: placeholder })
+    } else {
+        pendingLogs.push({ timestamp: Date.now(), direction, message })
+    }
+
     if (pendingLogs.length >= options.maxQueueSize) {
         console.warn('[wsLogger] Pending log queue maxed out, flushing...')
         flushLogs()
