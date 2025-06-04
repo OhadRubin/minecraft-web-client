@@ -21,6 +21,7 @@ export interface MouseCommand {
   | 'swapHands'
   | 'cursor'
   | 'getScreenshot'
+  | 'getBotStatus'
   control?: string
   state?: boolean
   message?: string
@@ -461,10 +462,14 @@ class TouchEvaluator {
           const base64Data = await Promise.race([capturePromise, timeoutPromise])
 
           console.log('[WsCommandClient] Screenshot captured successfully')
+          const status = this.collectBotStatus()
+          const readableStatus = this.prettyPrintBotStatus(status)
           if (this.ws) {
             this.ws.send(JSON.stringify({
               type: 'screenshot',
-              data: base64Data
+              data: base64Data,
+              status: readableStatus,
+              statusData: status
             }))
           }
         } catch (error) {
@@ -478,7 +483,122 @@ class TouchEvaluator {
           }
         }
         break
+      case 'getBotStatus':
+        try {
+          const status = this.collectBotStatus()
+          if (this.ws) {
+            this.ws.send(JSON.stringify({
+              type: 'botStatus',
+              data: status
+            }))
+          }
+        } catch (error) {
+          console.error('[WsCommandClient] Error getting bot status:', error)
+        }
+        break
     }
+  }
+
+  private getCardinalDirection (yaw: number): string {
+    let degrees = (yaw * 180 / Math.PI + 360) % 360
+    if (degrees >= 315 || degrees < 45) return 'North'
+    else if (degrees >= 45 && degrees < 135) return 'East'
+    else if (degrees >= 135 && degrees < 225) return 'South'
+    else return 'West'
+  }
+
+  private collectBotStatus () {
+    const position = this.bot.entity.position.floored()
+    const block = this.bot.blockAtCursor()
+    const currentBiome = this.bot.blockAt(this.bot.entity.position).biome
+
+    const activeEntityStates: any = {}
+    if (this.bot.entity.isFlying) activeEntityStates.isFlying = true
+    if (this.bot.entity.isInLava) activeEntityStates.isInLava = true
+    if (this.bot.entity.isInWater) activeEntityStates.isInWater = true
+    if (this.bot.entity.isInWeb) activeEntityStates.isInWeb = true
+    if (this.bot.entity.isInvulnerable) activeEntityStates.isInvulnerable = true
+    if (this.bot.entity.isUnderLava) activeEntityStates.isUnderLava = true
+    if (this.bot.entity.isUnderWater) activeEntityStates.isUnderWater = true
+
+    const hotbarItems: any = {}
+    for (let i = 0; i < 9; i++) {
+      const item = this.bot.inventory.slots[this.bot.QUICK_BAR_START + i]
+      if (item) {
+        hotbarItems[i] = {
+          displayName: item.displayName,
+          count: item.count
+        }
+      }
+    }
+
+    const timeOfDay = this.bot.time.timeOfDay
+    let timeUntilNext: { event: string, minutes: number }
+    if (timeOfDay < 12000) {
+      const minutesUntilSunset = (12000 - timeOfDay) / 1200
+      timeUntilNext = { event: 'sunset', minutes: Math.round(minutesUntilSunset * 100) / 100 }
+    } else {
+      const minutesUntilSunrise = (24000 - timeOfDay) / 1200
+      timeUntilNext = { event: 'sunrise', minutes: Math.round(minutesUntilSunrise * 100) / 100 }
+    }
+
+    return {
+      position: { x: position.x, y: position.y, z: position.z },
+      rotation: {
+        yaw: Math.round((this.bot.entity.yaw * 180 / Math.PI) * 100) / 100,
+        pitch: Math.round((this.bot.entity.pitch * 180 / Math.PI) * 100) / 100,
+        cardinalDirection: this.getCardinalDirection(this.bot.entity.yaw)
+      },
+      biome: { displayName: currentBiome.displayName },
+      inventory: { currentSlot: this.bot.quickBarSlot, hotbarItems },
+      time: {
+        timeOfDay: this.bot.time.timeOfDay,
+        day: this.bot.time.day,
+        isDay: this.bot.time.isDay,
+        timeUntilNext
+      },
+      entityState: activeEntityStates,
+      targetBlock: block ? {
+        displayName: block.displayName,
+        canDig: this.bot.canDigBlock(block),
+        biome: block.biome,
+        position: block.position
+      } : {
+        message: 'pointing at a block that is too far away'
+      }
+    }
+  }
+
+  private prettyPrintBotStatus (status: any): string {
+    const lines: string[] = []
+    const pos = status.position
+    const rot = status.rotation
+    lines.push(`Position: (${pos.x}, ${pos.y}, ${pos.z}) facing ${rot.cardinalDirection} (${rot.yaw}°, ${rot.pitch}°)`)
+    lines.push(`Biome: ${status.biome.displayName}`)
+    const time = status.time
+    const minutes = time.timeUntilNext.minutes.toFixed(2)
+    lines.push(`Day ${time.day}, ${minutes} minutes until ${time.timeUntilNext.event}`)
+    lines.push(`Selected slot: ${status.inventory.currentSlot}`)
+    const hotbarItems = status.inventory.hotbarItems
+    if (Object.keys(hotbarItems).length > 0) {
+      const itemStrings = Object.entries(hotbarItems).map(([slot, item]: [string, any]) => `[${slot}: ${item.displayName} x${item.count}]`)
+      lines.push(`Hotbar: ${itemStrings.join(' ')}`)
+    } else {
+      lines.push('Hotbar: Empty')
+    }
+    const entityStates = Object.keys(status.entityState)
+    if (entityStates.length > 0) {
+      const stateNames = entityStates.map(state => state.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()))
+      lines.push(`Status: ${stateNames.join(', ')}`)
+    }
+    if (status.targetBlock.message) {
+      lines.push(`Looking at: ${status.targetBlock.message}`)
+    } else {
+      const block = status.targetBlock
+      const canDigText = block.canDig ? 'can dig' : 'cannot dig'
+      lines.push(`Looking at: ${block.displayName} (${canDigText})`)
+    }
+    return lines.join('\n')
   }
 }
 

@@ -102,24 +102,24 @@ async function sendCommandWithScreenshot(command: MinecraftCommand, actionDescri
     }
 
     ws.send(JSON.stringify(command));
-    const screenshotData = await captureScreenshot();
+    const screenshotResponse = await captureScreenshot();
 
     return {
         content: [
             {
                 type: "text",
-                text: actionDescription,
+                text: `${actionDescription}\n\nCurrent Status:\n${screenshotResponse.status}`,
             },
             {
                 type: "image",
-                data: screenshotData,
+                data: screenshotResponse.image,
                 mimeType: "image/png",
             },
         ],
     };
 }
 
-async function captureScreenshot(): Promise<string> {
+async function captureScreenshot(): Promise<{ image: string; status: string; statusData: any }> {
     try {
         // Send screenshot command to the web client and wait for response
         if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -155,7 +155,11 @@ async function captureScreenshot(): Promise<string> {
                         if (message.error) {
                             reject(new Error(`Screenshot failed: ${message.error}`));
                         } else if (message.data) {
-                            resolve(message.data);
+                            resolve({
+                                image: message.data,
+                                status: message.status || "Status unavailable",
+                                statusData: message.statusData || {}
+                            });
                         } else {
                             reject(new Error("Screenshot response missing data"));
                         }
@@ -184,9 +188,103 @@ async function captureScreenshot(): Promise<string> {
     } catch (error) {
         // console.error("Failed to capture screenshot:", error);
         // Return a small transparent pixel as fallback
-        return "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+        return {
+            image: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=",
+            status: "Status unavailable",
+            statusData: {}
+        };
     }
 }
+
+async function requestBotStatus(): Promise<any> {
+    await ensureConnection();
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+        throw new Error("WebSocket connection not available");
+    }
+
+    return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+            cleanup();
+            reject(new Error("Bot status timeout"));
+        }, 5000);
+
+        const cleanup = () => {
+            if (ws && handleMessage) {
+                ws.off('message', handleMessage);
+            }
+            clearTimeout(timeout);
+        };
+
+        const handleMessage = (data: Buffer) => {
+            try {
+                const message = JSON.parse(data.toString());
+                if (message.type === 'botStatus') {
+                    cleanup();
+                    resolve(message.data);
+                }
+            } catch {
+                // ignore
+            }
+        };
+
+        ws.on('message', handleMessage);
+        setTimeout(() => {
+            if (ws) {
+                ws.send(JSON.stringify({ type: 'getBotStatus' }));
+            }
+        }, 100);
+    });
+}
+
+function prettyPrintBotStatus(status: any): string {
+    const lines: string[] = [];
+    const pos = status.position;
+    const rot = status.rotation;
+    lines.push(`Position: (${pos.x}, ${pos.y}, ${pos.z}) facing ${rot.cardinalDirection} (${rot.yaw}°, ${rot.pitch}°)`);
+    lines.push(`Biome: ${status.biome.displayName}`);
+    const time = status.time;
+    const minutes = time.timeUntilNext.minutes.toFixed(2);
+    lines.push(`Day ${time.day}, ${minutes} minutes until ${time.timeUntilNext.event}`);
+    lines.push(`Selected slot: ${status.inventory.currentSlot}`);
+    const hotbarItems = status.inventory.hotbarItems;
+    if (Object.keys(hotbarItems).length > 0) {
+        const itemStrings = Object.entries(hotbarItems).map(([slot, item]: [string, any]) => `[${slot}: ${item.displayName} x${item.count}]`);
+        lines.push(`Hotbar: ${itemStrings.join(' ')}`);
+    } else {
+        lines.push('Hotbar: Empty');
+    }
+    const entityStates = Object.keys(status.entityState);
+    if (entityStates.length > 0) {
+        const stateNames = entityStates.map(state => state.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()));
+        lines.push(`Status: ${stateNames.join(', ')}`);
+    }
+    if (status.targetBlock.message) {
+        lines.push(`Looking at: ${status.targetBlock.message}`);
+    } else {
+        const block = status.targetBlock;
+        const canDigText = block.canDig ? 'can dig' : 'cannot dig';
+        lines.push(`Looking at: ${block.displayName} (${canDigText})`);
+    }
+    return lines.join('\n');
+}
+
+server.addTool({
+    name: "getBotStatus",
+    description: "Get comprehensive information about the bot's current state",
+    parameters: z.object({}),
+    execute: async () => {
+        const status = await requestBotStatus();
+        const readable = prettyPrintBotStatus(status);
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: readable,
+                },
+            ],
+        };
+    },
+});
 
 // Helper to send a smooth sequence of look commands based on desired angle deltas
 async function stepLook(xAngle: number, yAngle: number, speed: "slow" | "normal" | "fast" = "normal") {
@@ -235,16 +333,16 @@ server.addTool({
         await new Promise(resolve => setTimeout(resolve, args.duration));
         await sendCommand({ type: "move", x: 0, z: 0 });
 
-        const screenshotData = await captureScreenshot();
+        const screenshotResponse = await captureScreenshot();
         return {
             content: [
                 {
                     type: "text",
-                    text: `Walked forward for ${args.duration}ms`,
+                    text: `Walked forward for ${args.duration}ms\n\nCurrent Status:\n${screenshotResponse.status}`,
                 },
                 {
                     type: "image",
-                    data: screenshotData,
+                    data: screenshotResponse.image,
                     mimeType: "image/png",
                 },
             ],
@@ -263,16 +361,16 @@ server.addTool({
     execute: async (args) => {
         await stepLook(args.xAngle, args.yAngle, args.speed);
 
-        const screenshotData = await captureScreenshot();
+        const screenshotResponse = await captureScreenshot();
         return {
             content: [
                 {
                     type: "text",
-                    text: `Looked ${args.xAngle}° yaw and ${args.yAngle}° pitch`,
+                    text: `Looked ${args.xAngle}° yaw and ${args.yAngle}° pitch\n\nCurrent Status:\n${screenshotResponse.status}`,
                 },
                 {
                     type: "image",
-                    data: screenshotData,
+                    data: screenshotResponse.image,
                     mimeType: "image/png",
                 },
             ],
@@ -290,16 +388,16 @@ server.addTool({
     }),
     execute: async (args) => {
         await new Promise(resolve => setTimeout(resolve, args.duration));
-        const screenshotData = await captureScreenshot();
+        const screenshotResponse = await captureScreenshot();
         return {
             content: [
                 {
                     type: "text",
-                    text: `You waited for ${args.duration}ms.`,
+                    text: `You waited for ${args.duration}ms.\n\nCurrent Status:\n${screenshotResponse.status}`,
                 },
                 {
                     type: "image",
-                    data: screenshotData,
+                    data: screenshotResponse.image,
                     mimeType: "image/png",
                 },
             ],
@@ -338,16 +436,16 @@ server.addTool({
             updateMouse: false
         });
 
-        const screenshotData = await captureScreenshot();
+        const screenshotResponse = await captureScreenshot();
         return {
             content: [
                 {
                     type: "text",
-                    text: `Right clicked and held for ${args.duration} (${durationMs}ms)`,
+                    text: `Right clicked and held for ${args.duration} (${durationMs}ms)\n\nCurrent Status:\n${screenshotResponse.status}`,
                 },
                 {
                     type: "image",
-                    data: screenshotData,
+                    data: screenshotResponse.image,
                     mimeType: "image/png",
                 },
             ],
@@ -384,16 +482,16 @@ server.addTool({
             updateMouse: false
         });
 
-        const screenshotData = await captureScreenshot();
+        const screenshotResponse = await captureScreenshot();
         return {
             content: [
                 {
                     type: "text",
-                    text: `Left clicked and held for ${args.duration} (${durationMs}ms)`,
+                    text: `Left clicked and held for ${args.duration} (${durationMs}ms)\n\nCurrent Status:\n${screenshotResponse.status}`,
                 },
                 {
                     type: "image",
-                    data: screenshotData,
+                    data: screenshotResponse.image,
                     mimeType: "image/png",
                 },
             ],
