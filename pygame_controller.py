@@ -265,6 +265,9 @@ class LookPathTracker:
     def clear_history(self):
         """Clear all movement history (manual reset)"""
         print("🗑️ Look path manually cleared")
+        print(f"🔄 Path reset due to inactivity! Final stats:")
+        self._print_current_stats()
+        # print(f"⏱️  Inactivity duration: {inactivity_duration_ms/1000:.1f}s\n")
         self.movements.clear()
         self.positions.clear()
         self.last_movement_time = None
