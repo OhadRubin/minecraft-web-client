@@ -89,6 +89,7 @@
         "framer-motion": "^12.9.2",
         "fs-extra": "^11.1.1",
         "google-drive-browserfs": "github:zardoy/browserfs#google-drive",
+        "html2canvas": "^1.4.1",
         "jszip": "^3.10.1",
         "lodash-es": "^4.17.21",
         "mcraft-fun-mineflayer": "^0.1.23",

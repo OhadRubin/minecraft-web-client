@@ -1,5 +1,6 @@
 import { onCameraMove } from './cameraRotationControls'
 import { moveWsCursorBy, emitWsMousemove, wsCursorState } from './react/WsCursor'
+import html2canvas from 'html2canvas'
 
 export interface MouseCommand {
   type:
@@ -376,41 +377,81 @@ class TouchEvaluator {
         break
       case 'getScreenshot':
         try {
-          console.log('[WsCommandClient] Capturing screenshot')
-          const canvas = document.getElementById('viewer-canvas') as HTMLCanvasElement
-          if (!canvas) {
-            console.error('[WsCommandClient] Canvas not found')
-            if (this.ws) {
-              this.ws.send(JSON.stringify({
-                type: 'screenshot',
-                data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
-                error: 'Canvas not found'
-              }))
-            }
-            break
-          }
+          console.log('[WsCommandClient] Capturing full page screenshot including UI elements')
 
           // Wait for the next frame to ensure rendering is complete
           await new Promise(resolve => requestAnimationFrame(resolve))
 
           // Create a timeout promise to prevent hanging
           const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Screenshot capture timeout')), 5000)
+            setTimeout(() => reject(new Error('Screenshot capture timeout')), 10000)
           })
 
           // Create the screenshot capture promise
           const capturePromise = new Promise<string>((resolve, reject) => {
             try {
               // Use a small delay to ensure the frame is fully rendered
-              setTimeout(() => {
+              setTimeout(async () => {
                 try {
-                  const dataUrl = canvas.toDataURL('image/png', 0.8) // Reduced quality for faster capture
-                  const base64Data = dataUrl.split(',')[1] // Remove data:image/png;base64, prefix
+                  console.log('[WsCommandClient] Using html2canvas for complete page capture')
+
+                  // Use html2canvas to capture the entire page including all UI elements
+                  const canvas = await html2canvas(document.body, {
+                    useCORS: true,
+                    allowTaint: true,
+                    backgroundColor: null,
+                    scale: 0.8, // Downscale for smaller file size
+                    logging: false,
+                    ignoreElements: (element) => {
+                      // Optionally ignore certain elements (e.g., debug overlays)
+                      return element.classList?.contains('ignore-screenshot') || false
+                    },
+                    // Capture WebGL canvases properly
+                    foreignObjectRendering: true,
+                    canvas: undefined
+                  })
+
+                  const dataUrl = canvas.toDataURL('image/png', 0.8)
+                  const base64Data = dataUrl.split(',')[1]
+
+                  console.log(`[WsCommandClient] Full page screenshot captured successfully: ${canvas.width}x${canvas.height}`)
                   resolve(base64Data)
                 } catch (error) {
-                  reject(error)
+                  console.warn('[WsCommandClient] html2canvas failed, falling back to canvas-only capture:', error)
+
+                  // Fallback to canvas-only capture if html2canvas fails
+                  const gameCanvas = document.getElementById('viewer-canvas') as HTMLCanvasElement
+                  if (!gameCanvas) {
+                    throw new Error('Game canvas not found and html2canvas failed')
+                  }
+
+                  // Create a downscaled version of just the game canvas
+                  const originalWidth = gameCanvas.width
+                  const originalHeight = gameCanvas.height
+                  const scaleFactor = 0.8
+                  const scaledWidth = Math.floor(originalWidth * scaleFactor)
+                  const scaledHeight = Math.floor(originalHeight * scaleFactor)
+
+                  const fallbackCanvas = document.createElement('canvas')
+                  fallbackCanvas.width = scaledWidth
+                  fallbackCanvas.height = scaledHeight
+                  const ctx = fallbackCanvas.getContext('2d')
+
+                  if (!ctx) {
+                    throw new Error('Failed to get 2D context for fallback canvas')
+                  }
+
+                  ctx.imageSmoothingEnabled = true
+                  ctx.imageSmoothingQuality = 'high'
+                  ctx.drawImage(gameCanvas, 0, 0, originalWidth, originalHeight, 0, 0, scaledWidth, scaledHeight)
+
+                  const dataUrl = fallbackCanvas.toDataURL('image/png', 0.8)
+                  const base64Data = dataUrl.split(',')[1]
+
+                  console.log(`[WsCommandClient] Fallback screenshot captured: ${scaledWidth}x${scaledHeight} (UI elements not included)`)
+                  resolve(base64Data)
                 }
-              }, 50)
+              }, 100)
             } catch (error) {
               reject(error)
             }
