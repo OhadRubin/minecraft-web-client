@@ -3,6 +3,110 @@
 ## Overview
 This document outlines the key information that should be tracked and reported by the Minecraft bot system, along with the appropriate locations for implementing this tracking.
 
+**Screenshot + Status Integration:** We should return `readableStatus = prettyPrintBotStatus(status)` whenever we are also sending a screenshot to MCP clients. This provides crucial context about what the bot is doing, where it is, and what it sees, making the visual information much more actionable for AI agents.
+
+### Why Include Status with Screenshots?
+1. **Context**: Screenshots show what the bot sees, but status explains where it is and what it's doing
+2. **Decision Making**: AI agents can make better decisions with both visual and contextual information
+3. **Debugging**: When something goes wrong, having both image and status helps diagnose issues
+4. **Efficiency**: Reduces need for separate status calls after every screenshot
+
+### Implementation in WebSocket Client
+The screenshot capture code in `src/wsCommandClient.ts` should be modified to include bot status:
+
+```typescript
+// In the 'getScreenshot' case, after capturing the screenshot:
+console.log('[WsCommandClient] Screenshot captured successfully')
+
+// Collect current bot status and pretty print it
+const status = this.collectBotStatus();
+const readableStatus = prettyPrintBotStatus(status);
+
+if (this.ws) {
+  this.ws.send(JSON.stringify({
+    type: 'screenshot',
+    data: base64Data,
+    status: readableStatus,  // Add human-readable status
+    statusData: status       // Also include raw data for programmatic use
+  }))
+}
+```
+
+### Implementation in MCP Server
+The MCP server tools should be updated to use this combined response format:
+
+```typescript
+// In minecraft-mcp-server.ts, update screenshot response handling:
+const handleMessage = (data: Buffer) => {
+  try {
+    const message = JSON.parse(data.toString());
+    
+    if (message.type === 'screenshot') {
+      if (message.error) {
+        reject(new Error(`Screenshot failed: ${message.error}`));
+      } else if (message.data) {
+        // Return both image and status information
+        resolve({
+          image: message.data,
+          status: message.status || "Status unavailable",
+          statusData: message.statusData || {}
+        });
+      }
+    }
+  } catch (error) {
+    // Handle parsing errors
+  }
+};
+```
+
+### Updated Tool Response Format
+Tools that capture screenshots should return both image and status:
+
+```typescript
+return {
+  content: [
+    {
+      type: "text", 
+      text: `${actionDescription}\n\nCurrent Status:\n${screenshotResponse.status}`
+    },
+    {
+      type: "image",
+      data: screenshotResponse.image,
+      mimeType: "image/png",
+    },
+  ],
+};
+```
+
+### Example Combined Response
+**Screenshot + Status Output:**
+```
+Left clicked and held for medium (1000ms)
+
+Current Status:
+Position: (156, 65, -243) facing North (2.1°, 12.3°)
+Biome: Plains
+Day 3, 7.25 minutes until sunset
+Selected slot: 0
+Hotbar: [0: Diamond Pickaxe x1] [1: Cobblestone x64] [8: Bread x12]
+Looking at: Stone (can dig)
+```
+
+This provides the AI agent with immediate context about:
+- Where the bot is located
+- What direction it's facing  
+- What time of day it is
+- What tools/items are available
+- What the bot is currently targeting
+- Any special status conditions
+
+### Benefits for AI Agents
+1. **Immediate Context**: No need for separate status calls
+2. **Better Planning**: Can see both visual state and inventory/position data
+3. **Error Detection**: Can spot mismatches between intended and actual actions
+4. **Spatial Awareness**: Coordinates + cardinal direction + visual confirmation
+5. **Resource Management**: Hotbar contents visible with every action
+
 ## Information to Track
 
 ### 1. Entity Position and State
@@ -217,6 +321,88 @@ function collectBotStatus() {
 }
 ```
 
+#### 3. Pretty Print Bot Status
+```typescript
+function prettyPrintBotStatus(status: any): string {
+  const lines: string[] = [];
+  
+  // Position and rotation
+  const pos = status.position;
+  const rot = status.rotation;
+  lines.push(`Position: (${pos.x}, ${pos.y}, ${pos.z}) facing ${rot.cardinalDirection} (${rot.yaw}°, ${rot.pitch}°)`);
+  
+  // Biome
+  lines.push(`Biome: ${status.biome.displayName}`);
+  
+  // Time information
+  const time = status.time;
+  const timeStr = time.isDay ? "Day" : "Night";
+  lines.push(`${timeStr} ${time.day}, ${time.timeUntilNext.minutes} minutes until ${time.timeUntilNext.event}`);
+  
+  // Current hotbar slot
+  lines.push(`Selected slot: ${status.inventory.currentSlot}`);
+  
+  // Hotbar items
+  const hotbarItems = status.inventory.hotbarItems;
+  if (Object.keys(hotbarItems).length > 0) {
+    const itemStrings = Object.entries(hotbarItems).map(([slot, item]: [string, any]) => 
+      `[${slot}: ${item.displayName} x${item.count}]`
+    );
+    lines.push(`Hotbar: ${itemStrings.join(' ')}`);
+  } else {
+    lines.push(`Hotbar: Empty`);
+  }
+  
+  // Entity status (only show if there are active states)
+  const entityStates = Object.keys(status.entityState);
+  if (entityStates.length > 0) {
+    const stateNames = entityStates.map(state => {
+      // Convert camelCase to readable format
+      return state.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase());
+    });
+    lines.push(`Status: ${stateNames.join(', ')}`);
+  }
+  
+  // Target block
+  if (status.targetBlock.message) {
+    lines.push(`Looking at: ${status.targetBlock.message}`);
+  } else {
+    const block = status.targetBlock;
+    const canDigText = block.canDig ? "can dig" : "cannot dig";
+    lines.push(`Looking at: ${block.displayName} (${canDigText})`);
+  }
+  
+  return lines.join('\n');
+}
+```
+
+### Usage Example
+```typescript
+// Get bot status and pretty print it
+const status = this.collectBotStatus();
+const readableStatus = prettyPrintBotStatus(status);
+console.log(readableStatus);
+
+// Or send as human-readable text via WebSocket
+if (this.ws) {
+  this.ws.send(JSON.stringify({
+    type: 'botStatusPretty',
+    data: readableStatus
+  }));
+}
+```
+
+### Sample Pretty Print Output
+```
+Position: (100, 64, 200) facing East (90.0°, -15.5°)
+Biome: Forest
+Day 5, 3.33 minutes until sunset
+Selected slot: 2
+Hotbar: [0: Diamond Sword x1] [2: Oak Wood x32] [5: Cooked Beef x16]
+Status: Is In Water
+Looking at: Oak Log (can dig)
+```
+
 ## Usage Patterns
 
 ### 1. Automatic Status Updates
@@ -260,43 +446,11 @@ The status information should be returned in a structured format that's easy for
 - `hotbarItems` will only contain slots that have items (empty slots are omitted)
 - `timeUntilNext` shows either time until sunset (if daytime) or time until sunrise (if nighttime)
 - `yaw` and `pitch` are converted from radians to degrees for easier readability
+- Use `prettyPrintBotStatus()` to convert the JSON data into human-readable text format
 
 ## Implementation Priority
-1. **First:** Add `getBotStatus` command to WebSocket client
-2. **Second:** Add corresponding MCP tool in server
-3. **Third:** Integrate status info into existing tools
-4. **Fourth:** Add automatic status broadcasting (optional) 
-
-
-
-currently selected slot
-bot.quickBarSlot
-To access a hotbar slot:
-```
-item = bot.inventory.slots[bot.QUICK_BAR_START + slotId] // slotId is 0-8
-// return theses for all 0-8 if they are not empty
-item.displayName 
-//and
-item.count
-
-```
-explanation of fields:
-```
-bot.time.timeOfDay
-Time of the day, in ticks.
-
-Time is based on ticks, where 20 ticks happen every second. There are 24000 ticks in a day, making Minecraft days exactly 20 minutes long.
-
-The time of day is based on the timestamp modulo 24000. 0 is sunrise, 6000 is noon, 12000 is sunset, and 18000 is midnight.
-
-bot.time.day
-Day of the world.
-
-bot.time.isDay
-Whether it is day or not.
-
-Based on whether the current time of day is between 0 and 13000 ticks (day + sunset).
-```
-
-
-what I want to add: how long (in minutes) until sunset/sunrise.
+1. **First:** Add `getBotStatus` command to WebSocket client with `collectBotStatus()` helper
+2. **Second:** Add `prettyPrintBotStatus()` helper function for human-readable output
+3. **Third:** Add corresponding MCP tool in server
+4. **Fourth:** Integrate status info into existing tools
+5. **Fifth:** Add automatic status broadcasting (optional)
