@@ -262,7 +262,7 @@ function prettyPrintBotStatus(status: any): string {
         lines.push(`Looking at: ${status.targetBlock.message}`);
     } else {
         const block = status.targetBlock;
-        const canDigText = block.canDig ? 'can dig' : 'cannot dig';
+        const canDigText = block.canDig ? 'is close enough to dig' : 'cannot dig - too far away';
         lines.push(`Looking at: ${block.displayName} (${canDigText})`);
     }
     return lines.join('\n');
