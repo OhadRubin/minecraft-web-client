@@ -455,20 +455,15 @@ class OpenAIAsyncMessageChain:
             if self.tools_list is not None:
                 api_params["tools"] = self.tools_list
 
-            # Initialize OpenAI client if needed
-            if not hasattr(self, "_openai_client") or self._openai_client is None:
-                self._openai_client = AsyncOpenAI(
-                    api_key=os.getenv("OPENAI_API_KEY"), base_url=self.base_url
-                )
 
             # Update interface with current messages for display
-            if self.persistent_interface:
-                interface = self.persistent_interface
-                interface.conv_panel.messages = msgs
-                interface.conv_panel._render_messages()
+            assert self.persistent_interface is not None, "persistent_interface is not set"
+            interface = self.persistent_interface
+            interface.conv_panel.messages = msgs
+            
 
             # Make the actual OpenAI API call
-            response = await self._openai_client.chat.completions.create(**api_params)
+            response = await interface.conv_panel._render_messages(**api_params)
 
             msg = response.choices[0].message
             resp = msg.content
