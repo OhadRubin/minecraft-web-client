@@ -200,6 +200,26 @@ class LookPathTracker:
             print("\n🔄 Path reset due to inactivity! Final stats:")
             self._print_current_stats()
             print(f"⏱️  Inactivity duration: {inactivity_duration_ms/1000:.1f}s\n")
+
+            # NEW: Convert to MCP format for recording
+            if hasattr(self, "recording_callback"):
+                total_x, total_y = self.current_stats["total_displacement"]
+
+                # Convert pixels to degrees (MCP server uses 5px = 1 degree)
+                x_angle = total_x / 5.0
+                y_angle = total_y / 5.0
+
+                # Only record meaningful movements (filter noise)
+                if abs(x_angle) > 0.2 or abs(y_angle) > 0.2:
+                    mcp_command = {
+                        "tool": "lookAngle",
+                        "parameters": {
+                            "xAngle": round(x_angle, 1),
+                            "yAngle": round(y_angle, 1),
+                            "speed": "normal",
+                        },
+                    }
+                    self.recording_callback(mcp_command)
         else:
             print(
                 f"🕐 Look path reset due to inactivity ({inactivity_duration_ms/1000:.1f}s gap)"
@@ -260,6 +280,11 @@ class LookPathTracker:
             return None
         current_time = int(time.time() * 1000)
         return (current_time - self.last_movement_time) / 1000.0
+
+    def set_recording_callback(self, callback):
+        """Set callback to receive discrete MCP commands"""
+        self.recording_callback = callback
+
 
 class LookPathVisualizationArea:
     def __init__(self, x: int, y: int, width: int, height: int):
@@ -453,6 +478,3 @@ class LookPathVisualizationArea:
         time_text = f"Idle: {time_since_str}"
         time_surface = self.font.render(time_text, True, time_color)
         surface.blit(time_surface, (info_rect.x + 5, y_offset))
-
-
-

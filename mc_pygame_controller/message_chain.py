@@ -10,7 +10,7 @@ import mimetypes
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 import asyncio
-from .server import Server, create_tool_functions, Configuration
+from .mcp_server import Server, create_tool_functions, Configuration
 from mc_pygame_controller import MinecraftController
 import pygame
 import threading

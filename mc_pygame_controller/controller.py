@@ -3,6 +3,7 @@ import json
 import websockets
 import threading
 import sys
+import argparse
 from typing import Optional
 
 import pygame
@@ -12,7 +13,9 @@ from .look_path import LookPathTracker, LookPathVisualizationArea
 from .ui_elements import Button, ToggleButton, VirtualJoystick, KeyboardMovement, TouchArea
 
 class MinecraftController:
-    def __init__(self):
+
+    def __init__(self, mode="pygame"):
+        self.mode = mode  # "pygame" or "mcp"
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Minecraft Web Client Controller")
         self.clock = pygame.time.Clock()
@@ -162,10 +165,10 @@ class MinecraftController:
             self.connected = True
             print("Connected to Minecraft Web Client!")
 
-            # Register as pygame client
-            init_message = {"init": "pygame"}
+            # Register client based on mode
+            init_message = {"init": self.mode}
             await self.websocket.send(json.dumps(init_message))
-            print("Registered as pygame client")
+            print(f"Registered as {self.mode} client")
 
             # Keep connection alive
             while self.connected and self.running:
@@ -346,6 +349,12 @@ class MinecraftController:
         status = self.small_font.render(f"Status: {status_text}", True, status_color)
         self.screen.blit(status, (10, 50))
 
+        # Draw mode status
+        mode_text = f"Mode: {self.mode.upper()}"
+        mode_color = BLUE if self.mode == "mcp" else WHITE
+        mode = self.small_font.render(mode_text, True, mode_color)
+        self.screen.blit(mode, (10, 75))
+
         # Draw movement joystick
         self.movement_joystick.draw(self.screen)
         move_label = self.small_font.render("Movement", True, WHITE)
@@ -463,7 +472,11 @@ class MinecraftController:
         pygame.display.flip()
 
     def run(self):
-        print("Starting Minecraft Controller...")
+        print(f"Starting Minecraft Controller in {self.mode.upper()} mode...")
+        if self.mode == "pygame":
+            print("Commands will be forwarded to the Minecraft bot")
+        else:
+            print("Commands will be sent directly to the Minecraft bot")
         print("Make sure the Minecraft web client server is running on localhost:8081")
 
         # Start WebSocket connection
@@ -680,6 +693,18 @@ class MinecraftController:
 
 
 if __name__ == "__main__":
-    controller = MinecraftController()
-    controller.run()
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Minecraft Web Client Controller")
+    parser.add_argument(
+        "--mcp",
+        action="store_true",
+        help="Run in MCP mode (commands sent directly to bot) instead of pygame mode (commands forwarded to bot)",
+    )
+    args = parser.parse_args()
 
+    # Determine mode
+    mode = "mcp" if args.mcp else "pygame"
+
+    # Create and run controller
+    controller = MinecraftController(mode=mode)
+    controller.run()
