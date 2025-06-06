@@ -137,117 +137,9 @@ class Message:
     should_cache: bool = False
 
 
-USE_LM = os.environ.get("USE_LM", "False").lower() == "true"
 
 
-class MockUsage:
-    """Mock usage object for MockResponse."""
-
-    def __init__(self, prompt_tokens: int, completion_tokens: int):
-        self.prompt_tokens = prompt_tokens
-        self.completion_tokens = completion_tokens
-        self.total_tokens = prompt_tokens + completion_tokens
-
-
-class MockFunction:
-    """Mock function object for tool calls."""
-
-    def __init__(self, name: str, arguments: str):
-        self.name = name
-        self.arguments = arguments
-
-
-class MockToolCall:
-    """Mock tool call object."""
-
-    def __init__(self, tool_name: str, arguments: dict):
-        self.id = f"call_{tool_name}_{hash(str(arguments)) % 10000}"
-        self.type = "function"
-        self.function = MockFunction(tool_name, json.dumps(arguments))
-
-
-class MockMessage:
-    """Mock message object that mimics OpenAI message structure."""
-
-    def __init__(self, content: str, tool_calls: list = None):
-        self.content = content
-        self.tool_calls = tool_calls or []
-
-
-class MockChoice:
-    """Mock choice object for MockResponse."""
-
-    def __init__(self, message: MockMessage):
-        self.message = message
-
-
-class MockResponse:
-    """Mock response object that mimics OpenAI response structure."""
-
-    def __init__(self, **api_params):
-        self.api_params = api_params
-        msgs = api_params.get("messages", [])
-        tools = api_params.get("tools", [])
-
-        # Print the conversation context for the user to see
-        print("\n" + "=" * 50)
-        print("CONVERSATION CONTEXT:")
-        print("=" * 50)
-        for message in msgs:
-            role = message["role"].upper()
-            content = message.get("content", "")
-            if isinstance(content, list):
-                # Handle multimodal content
-                text_parts = [
-                    item.get("text", "")
-                    for item in content
-                    if item.get("type") == "text"
-                ]
-                content = " ".join(text_parts)
-            print(f"{role}: {content}")
-        print("=" * 50)
-
-        if tools:
-            print("\nAVAILABLE TOOLS:")
-            for tool in tools:
-                tool_name = tool["function"]["name"]
-                tool_desc = tool["function"]["description"]
-                print(f"- {tool_name}: {tool_desc}")
-            print("=" * 50)
-
-        # Get response from stdin
-        print(
-            "\nEnter your response as the assistant (or 'TOOL:tool_name:arguments_json' to call a tool):"
-        )
-        user_response = input().strip()
-
-        # Check if user wants to make a tool call
-        if user_response.startswith("TOOL:"):
-            # Parse tool call format: TOOL:tool_name:arguments_json
-            parts = user_response.split(":", 2)
-            if len(parts) >= 3:
-                tool_name = parts[1]
-                try:
-                    tool_args = json.loads(parts[2]) if parts[2] else {}
-                except json.JSONDecodeError:
-                    tool_args = {}
-
-                tool_call = MockToolCall(tool_name, tool_args)
-                message = MockMessage(f"I'll use the {tool_name} tool.", [tool_call])
-            else:
-                # Invalid tool format, treat as regular response
-                message = MockMessage(user_response, [])
-        else:
-            # Regular text response
-            message = MockMessage(user_response, [])
-
-        # Create mock usage metrics
-        prompt_tokens = len(str(msgs)) // 4  # Rough estimate
-        completion_tokens = len(message.content) // 4  # Rough estimate
-
-        self.usage = MockUsage(prompt_tokens, completion_tokens)
-        self.choices = [MockChoice(message)]
-
+from ..mc_pygame_controller import MinecraftController
 
 @dataclass(frozen=True)
 class OpenAIAsyncMessageChain:
@@ -401,11 +293,6 @@ class OpenAIAsyncMessageChain:
         self = replace(self, system_prompt=content, cache_system=should_cache)
         return self
 
-    @chain_method
-    def with_structure(self, response_format: Type[BaseModel]):
-        """Set a Pydantic model as the expected response format."""
-        self = replace(self, response_format=response_format)
-        return self
 
     @chain_method
     def with_tools(self, tools_list: List, tools_mapping: Dict[str, Any]):
@@ -464,16 +351,7 @@ class OpenAIAsyncMessageChain:
     @chain_method
     async def generate(self):
         while True:
-            if self.base_url == "https://openrouter.ai/api/v1":
-                client = AsyncOpenAI(
-                    base_url=self.base_url, api_key=os.getenv("OPENROUTER_API_KEY")
-                )
-            elif self.base_url is not None:
-                client = AsyncOpenAI(
-                    base_url=self.base_url, api_key="lm-studio"
-                )  # Or a configurable key for other base URLs
-            else:
-                client = AsyncOpenAI()
+
             msgs = self.serialize()
 
             # Prepare common parameters
@@ -487,44 +365,16 @@ class OpenAIAsyncMessageChain:
             # Only add tools if they exist
             if self.tools_list is not None:
                 api_params["tools"] = self.tools_list
-            if USE_LM:
 
-                response = await client.chat.completions.create(**api_params)
-            else:
-                # Use persistent PygameInterface if available, otherwise create new one
-                if hasattr(self, "persistent_interface") and self.persistent_interface:
-                    # Use the persistent interface (for trajectory recording)
-                    interface = self.persistent_interface
-                    # Update interface with current messages for display
-                    interface.conv_panel.messages = msgs
-                    interface.conv_panel._render_messages()
-                    user_response = interface.get_response()
-                else:
-                    # Fallback: create new interface (old behavior)
-                    from .ui import PygameInterface
-                    interface = PygameInterface(msgs, self.tools_list or [])
-                    interface.tool_mapping = (
-                        self.tools_mapping or {}
-                    )  # Pass tool mapping for trajectory recording
-                    user_response = interface.get_response()
 
-                # Handle tool responses from PygameInterface
-                if user_response.startswith("TOOL:"):
-                    # Parse tool response: "TOOL:tool_name:arguments_json"
-                    parts = user_response.split(":", 2)
-                    if len(parts) == 3:
-                        tool_name = parts[1]
-                        args_json = parts[2]
+            interface = self.persistent_interface
+            # Update interface with current messages for display
+            interface.conv_panel.messages = msgs
+            interface.conv_panel._render_messages()
+            response = interface.get_response()
 
-                        # Create a mock response with tool calls
-                        response = MockResponse(
-                            content=f"Using tool {tool_name}",
-                            tool_calls=[MockToolCall(tool_name, json.loads(args_json))],
-                        )
-                    else:
-                        response = MockResponse(content=user_response)
-                else:
-                    response = MockResponse(content=user_response)
+
+
 
             msg = response.choices[0].message
             resp = msg.content
@@ -803,149 +653,6 @@ class OpenAIAsyncMessageChain:
         return cls.from_dict(json.loads(json_str))
 
 
-def test_chain1():
-    chain1 = OpenAIAsyncMessageChain()
-    chain1 = (
-        chain1.user("Hello!")
-        .bot("Hi there!")
-        .user("How are you?")
-        .generate()
-        .print_last()
-    )
-
-
-def test_chain2():
-    chain2 = OpenAIAsyncMessageChain()
-    chain2 = (
-        chain2.user("Come up with a name, respond with a single word")
-        .bot("Donny")
-        .user("Tell me a story about Donny")
-        .generate()
-        .print_last()
-    )
-
-
-def test_system():
-    chain2 = OpenAIAsyncMessageChain()
-    chain2 = (
-        chain2.system("Answer in rhyming words")
-        .user("Come up with a name, respond with a single word")
-        .bot("Donny")
-        .user("Tell me a story about Donny")
-        .generate()
-        .print_last()
-    )
-
-    # .bot("Hi there!")
-
-
-def test_serialization():
-    """Test that serialization and deserialization work correctly."""
-    # Create a chain with various message types
-    chain = OpenAIAsyncMessageChain(model_name="gpt-4o")
-    chain = (
-        chain.system("You are a helpful assistant")
-        .user("Hello!")
-        .bot("Hi there! How can I help you?")
-        .user("What's 2+2?")
-    )
-
-    # Add some mock data to test serialization
-    chain = replace(
-        chain,
-        response_list=("Hi there! How can I help you?", "2+2 equals 4"),
-        metric_list=(
-            {"input_tokens": 10, "output_tokens": 5, "total_tokens": 15},
-            {"input_tokens": 8, "output_tokens": 3, "total_tokens": 11},
-        ),
-    )
-
-    # Test serialization
-    json_str = chain.to_json()
-    print("Serialized chain:")
-    print(json_str[:200] + "..." if len(json_str) > 200 else json_str)
-
-    # Test deserialization
-    restored_chain = OpenAIAsyncMessageChain.from_json(json_str)
-
-    # Verify the data matches
-    assert restored_chain.model_name == chain.model_name
-    assert restored_chain.system_prompt == chain.system_prompt
-    assert len(restored_chain.messages) == len(chain.messages)
-    assert restored_chain.response_list == chain.response_list
-    assert restored_chain.metric_list == chain.metric_list
-
-    print("✅ Serialization test passed!")
-
-
-def test_serialization_debug():
-    """Debug serialization issues by testing each field individually."""
-    import json
-
-    # Create a minimal chain
-    chain = OpenAIAsyncMessageChain(model_name="gpt-4o")
-    chain = chain.system("Test").user("Hello")
-
-    print("Testing individual fields:")
-
-    # Test each field individually
-    test_data = {
-        "model_name": chain.model_name,
-        "system_prompt": chain.system_prompt,
-        "cache_system": chain.cache_system,
-        "verbose": chain.verbose,
-        "base_url": chain.base_url,
-        "max_tokens": chain.max_tokens,
-    }
-
-    for key, value in test_data.items():
-        try:
-            json.dumps({key: value})
-            print(f"✅ {key}: OK")
-        except Exception as e:
-            print(f"❌ {key}: {type(value)} - {e}")
-
-    # Test messages
-    try:
-        messages_data = []
-        for i, msg in enumerate(chain.messages):
-            msg_dict = {
-                "role": msg.role,
-                "content": msg.content,
-                "tool_calls": msg.tool_calls,
-                "tool_call_id": msg.tool_call_id,
-                "name": msg.name,
-                "should_cache": msg.should_cache,
-            }
-            try:
-                json.dumps(msg_dict)
-                print(f"✅ Message {i}: OK")
-            except Exception as e:
-                print(f"❌ Message {i}: {e}")
-                # Test each field in the message
-                for field, val in msg_dict.items():
-                    try:
-                        json.dumps({field: val})
-                        print(f"  ✅ {field}: OK")
-                    except Exception as fe:
-                        print(f"  ❌ {field}: {type(val)} - {fe}")
-    except Exception as e:
-        print(f"❌ Messages: {e}")
-
-    # Test tuples
-    try:
-        json.dumps(list(chain.metric_list))
-        print("✅ metric_list: OK")
-    except Exception as e:
-        print(f"❌ metric_list: {e}")
-
-    try:
-        json.dumps(list(chain.response_list))
-        print("✅ response_list: OK")
-    except Exception as e:
-        print(f"❌ response_list: {e}")
-
-
 async def test_image_serialization():
     """Test image handling with serialization."""
     # Create initial chain with image
@@ -1034,18 +741,16 @@ async def handle_interactive_session(
     initial_message: str | None = None,
     constant_msg: str | None = None,
 ) -> OpenAIAsyncMessageChain:
-    from .ui import PygameInterface
-    # Create persistent PygameInterface for trajectory recording if USE_LM=False
-    persistent_interface = None
-    if not USE_LM:
-        # Create a persistent interface that will be reused across generate() calls
-        persistent_interface = PygameInterface([], chain.tools_list or [])
-        persistent_interface.tool_mapping = chain.tools_mapping or {}
 
-        # Store reference in chain for generate() method to use
-        chain = replace(chain, persistent_interface=persistent_interface)
-        print("🎮 Persistent PygameInterface created for trajectory recording")
-        print("💡 Use F7 to switch to controller mode, F5/F6 to start/stop recording")
+
+    # Create a persistent interface that will be reused across generate() calls
+    persistent_interface = MinecraftController([], chain.tools_list or [])
+    persistent_interface.tool_mapping = chain.tools_mapping or {}
+
+    # Store reference in chain for generate() method to use
+    chain = replace(chain, persistent_interface=persistent_interface)
+    print("🎮 Persistent MinecraftController created for trajectory recording")
+    print("💡 Use F7 to switch to controller mode, F5/F6 to start/stop recording")
 
     # Send initial message if provided
     if initial_message:
@@ -1060,23 +765,11 @@ async def handle_interactive_session(
             if constant_msg is not None:
                 user_input = constant_msg
             else:
-                if USE_LM:
-                    user_input = input("You: ").strip()
-                    if user_input.lower() in ["quit", "exit"]:
-                        print("\nExiting...")
-                        break
-                else:
-                    # For PygameInterface mode, get input from the persistent interface
-                    if persistent_interface:
-                        user_input = persistent_interface.get_response()
-                        if user_input == "exit":
-                            print("\nExiting...")
-                            break
-                    else:
-                        user_input = input("You: ").strip()
-                        if user_input.lower() in ["quit", "exit"]:
-                            print("\nExiting...")
-                            break
+
+                user_input = input("You: ").strip()
+                if user_input.lower() in ["quit", "exit"]:
+                    print("\nExiting...")
+                    break
 
             if not user_input:
                 continue
@@ -1142,7 +835,7 @@ Don't call multiple tools at once.
     finally:
         await cleanup_servers(config.servers)
 
-
+import argparse
 async def main() -> None:
     """Initialize and run the chat session."""
     # Parse command line arguments
