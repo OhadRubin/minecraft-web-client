@@ -1,27 +1,21 @@
-from mcp_agent import (
-    main,
+from .message_chain import (
     OpenAIAsyncMessageChain,
     ChatSessionConfig,
     handle_interactive_session,
     run_chat_session,
-    Configuration,
-    Server,
-    create_tool_functions,
-    PygameInterface,
+    main,
 )
+from .server import Configuration, Server, create_tool_functions
+from .ui import PygameInterface
 
 __all__ = [
-    'main',
     'OpenAIAsyncMessageChain',
     'ChatSessionConfig',
     'handle_interactive_session',
     'run_chat_session',
+    'main',
     'Configuration',
     'Server',
     'create_tool_functions',
     'PygameInterface',
 ]
-
-if __name__ == "__main__":
-    import asyncio
-    asyncio.run(main())
