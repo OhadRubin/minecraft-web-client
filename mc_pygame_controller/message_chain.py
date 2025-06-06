@@ -11,6 +11,11 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 import asyncio
 from .server import Server, create_tool_functions, Configuration
+from mc_pygame_controller import MinecraftController
+import pygame
+import threading
+import time
+
 
 async def encode_base64_content_from_url(content_url: str) -> str:
     """Asynchronously fetch content from a URL and encode it in base64."""
@@ -137,9 +142,94 @@ class Message:
     should_cache: bool = False
 
 
+class ConversationPanel:
+    """Simple panel to manage conversation messages for display"""
+
+    def __init__(self):
+        self.messages = []
+
+    def _render_messages(self):
+        """Render messages for display - currently just prints them"""
+        if self.messages:
+            print(f"📄 Conversation has {len(self.messages)} messages")
 
 
-from ..mc_pygame_controller import MinecraftController
+class MinecraftControllerInterface:
+    """Interface adapter for MinecraftController to work with the conversation system"""
+
+    def __init__(self, servers_list, tools_list):
+        self.servers_list = servers_list
+        self.tools_list = tools_list
+        self.tool_mapping = {}
+        self.conv_panel = ConversationPanel()
+        self.controller = None
+        self.controller_thread = None
+        self.running = False
+        self.openai_client = None
+
+    def start_controller(self):
+        """Initialize pygame but don't start the controller yet (due to macOS threading restrictions)"""
+        if not self.running:
+            self.running = True
+            print("🎮 MinecraftController interface ready")
+            print("💡 Note: On macOS, pygame must run on main thread")
+            print("💡 Use 'controller' command to launch controller window")
+            print(
+                "💡 Controller will be available when needed for trajectory recording"
+            )
+
+    def get_response(self):
+        """Get response from OpenAI API - this is called by the generate() method"""
+        if not self.openai_client:
+            # Initialize OpenAI client if not already done
+            self.openai_client = AsyncOpenAI()
+
+        # This is a synchronous wrapper that will be called from the async generate() method
+        # The actual async work happens in the generate() method
+        # We just need to return a mock response that will be replaced
+        class MockResponse:
+            def __init__(self):
+                self.choices = [MockChoice()]
+
+        class MockChoice:
+            def __init__(self):
+                self.message = MockMessage()
+
+        class MockMessage:
+            def __init__(self):
+                self.content = "Response will be handled by generate() method"
+                self.tool_calls = None
+
+        return MockResponse()
+
+    def launch_controller(self):
+        """Launch the MinecraftController on the main thread"""
+        try:
+            pygame.init()
+            self.controller = MinecraftController()
+            print("🎮 Starting Minecraft Controller...")
+            print("💡 Controller window launched - use F5/F6 for trajectory recording")
+            self.controller.run()
+        except Exception as e:
+            print(f"Error launching controller: {e}")
+        finally:
+            self.running = False
+
+    def cleanup(self):
+        """Clean up the controller"""
+        self.running = False
+        if self.controller:
+            self.controller.running = False
+        try:
+            pygame.quit()
+        except:
+            pass
+        print("🎮 Minecraft Controller interface cleaned up")
+
+
+# from controller import MinecraftController
+from mc_pygame_controller import MinecraftController
+
 
 @dataclass(frozen=True)
 class OpenAIAsyncMessageChain:
@@ -293,7 +383,6 @@ class OpenAIAsyncMessageChain:
         self = replace(self, system_prompt=content, cache_system=should_cache)
         return self
 
-
     @chain_method
     def with_tools(self, tools_list: List, tools_mapping: Dict[str, Any]):
         """Set a Pydantic model as the expected response format."""
@@ -366,15 +455,20 @@ class OpenAIAsyncMessageChain:
             if self.tools_list is not None:
                 api_params["tools"] = self.tools_list
 
+            # Initialize OpenAI client if needed
+            if not hasattr(self, "_openai_client") or self._openai_client is None:
+                self._openai_client = AsyncOpenAI(
+                    api_key=os.getenv("OPENAI_API_KEY"), base_url=self.base_url
+                )
 
-            interface = self.persistent_interface
             # Update interface with current messages for display
-            interface.conv_panel.messages = msgs
-            interface.conv_panel._render_messages()
-            response = interface.get_response()
+            if self.persistent_interface:
+                interface = self.persistent_interface
+                interface.conv_panel.messages = msgs
+                interface.conv_panel._render_messages()
 
-
-
+            # Make the actual OpenAI API call
+            response = await self._openai_client.chat.completions.create(**api_params)
 
             msg = response.choices[0].message
             resp = msg.content
@@ -738,19 +832,24 @@ async def initialize_servers(servers: list[Server]) -> bool:
 
 async def handle_interactive_session(
     chain: OpenAIAsyncMessageChain,
+    servers: list = None,
     initial_message: str | None = None,
     constant_msg: str | None = None,
 ) -> OpenAIAsyncMessageChain:
 
-
     # Create a persistent interface that will be reused across generate() calls
-    persistent_interface = MinecraftController([], chain.tools_list or [])
+    persistent_interface = MinecraftControllerInterface(
+        servers or [], chain.tools_list or []
+    )
     persistent_interface.tool_mapping = chain.tools_mapping or {}
 
     # Store reference in chain for generate() method to use
     chain = replace(chain, persistent_interface=persistent_interface)
     print("🎮 Persistent MinecraftController created for trajectory recording")
     print("💡 Use F7 to switch to controller mode, F5/F6 to start/stop recording")
+
+    # Start the controller in the background
+    persistent_interface.start_controller()
 
     # Send initial message if provided
     if initial_message:
@@ -772,6 +871,15 @@ async def handle_interactive_session(
                     break
 
             if not user_input:
+                continue
+
+            # Handle special commands
+            if user_input.lower() == "controller":
+                print("🎮 Launching Minecraft Controller...")
+                print(
+                    "💡 This will open the controller window. Close it to return to chat."
+                )
+                persistent_interface.launch_controller()
                 continue
 
             # Use the new async-aware method
@@ -829,13 +937,16 @@ Don't call multiple tools at once.
 
         # Handle interactive session with optional initial message
         chain = await handle_interactive_session(
-            chain, config.initial_message, config.constant_msg
+            chain, config.servers, config.initial_message, config.constant_msg
         )
 
     finally:
         await cleanup_servers(config.servers)
 
+
 import argparse
+
+
 async def main() -> None:
     """Initialize and run the chat session."""
     # Parse command line arguments

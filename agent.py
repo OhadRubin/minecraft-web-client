@@ -1,26 +1,5 @@
-from mcp_agent import (
-    main,
-    OpenAIAsyncMessageChain,
-    ChatSessionConfig,
-    handle_interactive_session,
-    run_chat_session,
-    Configuration,
-    Server,
-    create_tool_functions,
-    PygameInterface,
-)
+from mc_pygame_controller.message_chain import main
 
-__all__ = [
-    'main',
-    'OpenAIAsyncMessageChain',
-    'ChatSessionConfig',
-    'handle_interactive_session',
-    'run_chat_session',
-    'Configuration',
-    'Server',
-    'create_tool_functions',
-    'PygameInterface',
-]
 
 if __name__ == "__main__":
     import asyncio
