@@ -13,6 +13,7 @@
   * **MC_TO_THREEJS_POSITION_MAPPING.md** – Documentation for mapping Minecraft positions to Three.js coordinates.
   * **RENDERER_DRAWING_GUIDE.md** – Instructions for implementing Three.js drawing utilities.
 * **PYGAME_TRAJECTORY_RECORDING_INTEGRATION.md** – Plan for recording trajectories as conversations.
+* 
   * **PYGAME_CONTROLLER.md** – Explanation of pygame controller features and usage.
 
 ## Finished Plans & Specifications
