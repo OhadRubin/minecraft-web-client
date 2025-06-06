@@ -11,11 +11,17 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 import asyncio
 from .mcp_server import Server, create_tool_functions, Configuration
-from mc_pygame_controller import MinecraftController
+# from mc_pygame_controller import MinecraftController
 import pygame
 import threading
 import time
-from .chain_utils import chain_method, encode_base64_content_from_url, _encode_to_data_uri
+from .chain_utils import (
+    chain_method,
+    encode_base64_content_from_url,
+    _encode_to_data_uri,
+    _resolve_multimodal_args,
+    _resolve_multimodal_output,
+)
 
 
 @dataclass(frozen=True)
@@ -35,6 +41,73 @@ class ConversationPanel:
 
     def __init__(self):
         self.messages = []
+        self.captured_actions = []  # Store MCP commands from controller
+        self.human_demo_mode = True  # Flag for human demo mode
+
+    def capture_mcp_action(self, mcp_command):
+        """Capture MCP commands from controller for trajectory recording"""
+        self.captured_actions.append(mcp_command)
+        print(f"📝 Captured action: {mcp_command['tool']}({mcp_command['parameters']})")
+
+    def convert_actions_to_mock_response(self):
+        """Convert captured human actions to mock AI response format"""
+        if not self.captured_actions:
+            # No actions captured, return basic response
+            return {
+                "content": "I'll explore and take some actions in Minecraft.",
+                "tool_calls": None,
+            }
+
+        # Generate mock reasoning based on captured actions
+        action_descriptions = []
+        tool_calls = []
+
+        for i, action in enumerate(self.captured_actions):
+            tool_name = action["tool"]
+            params = action["parameters"]
+
+            # Generate mock tool call ID
+            tool_call_id = f"call_{i}_{tool_name}"
+
+            # Add to tool calls list
+            tool_calls.append(
+                {
+                    "id": tool_call_id,
+                    "type": "function",
+                    "function": {"name": tool_name, "arguments": json.dumps(params)},
+                }
+            )
+
+            # Generate human-like reasoning
+            if tool_name == "lookAngle":
+                x_angle = params.get("xAngle", 0)
+                y_angle = params.get("yAngle", 0)
+                action_descriptions.append(
+                    f"look around (x: {x_angle}°, y: {y_angle}°)"
+                )
+            elif tool_name == "walk":
+                duration = params.get("duration", 1000)
+                action_descriptions.append(f"move forward for {duration}ms")
+            elif tool_name == "leftClick":
+                action_descriptions.append("break/attack with left click")
+            elif tool_name == "rightClick":
+                action_descriptions.append("place/use with right click")
+            elif tool_name == "setHotbarSlot":
+                slot = params.get("slot", 0)
+                action_descriptions.append(f"select hotbar slot {slot + 1}")
+            else:
+                action_descriptions.append(f"use {tool_name}")
+
+        # Generate mock reasoning content
+        if len(action_descriptions) == 1:
+            content = f"I'll {action_descriptions[0]} to explore the area."
+        else:
+            content = f"I'll {', '.join(action_descriptions[:-1])} and {action_descriptions[-1]} to navigate and explore."
+
+        # Clear captured actions after converting
+        self.captured_actions.clear()
+
+        return {"content": content, "tool_calls": tool_calls if tool_calls else None}
 
     async def _render_messages(self, **api_params):
         """Render messages for display - mock response for pygame/MCP mode"""
@@ -43,18 +116,43 @@ class ConversationPanel:
 
         # Return mock response that looks like OpenAI response for compatibility
         class MockResponse:
-            def __init__(self):
-                self.choices = [MockChoice()]
+
+            def __init__(self, message_data):
+                self.choices = [MockChoice(message_data)]
                 self.usage = MockUsage()
 
         class MockChoice:
-            def __init__(self):
-                self.message = MockMessage()
+
+            def __init__(self, message_data):
+                self.message = MockMessage(message_data)
 
         class MockMessage:
-            def __init__(self):
-                self.content = "MCP/Pygame mode - no OpenAI call made"
-                self.tool_calls = None
+
+            def __init__(self, message_data):
+                self.content = message_data["content"]
+                self.tool_calls = message_data["tool_calls"]
+                # Convert dict tool calls to mock objects if needed
+                if self.tool_calls:
+                    mock_tool_calls = []
+                    for tc in self.tool_calls:
+                        mock_tc = type(
+                            "MockToolCall",
+                            (),
+                            {
+                                "id": tc["id"],
+                                "type": tc["type"],
+                                "function": type(
+                                    "MockFunction",
+                                    (),
+                                    {
+                                        "name": tc["function"]["name"],
+                                        "arguments": tc["function"]["arguments"],
+                                    },
+                                )(),
+                            },
+                        )()
+                        mock_tool_calls.append(mock_tc)
+                    self.tool_calls = mock_tool_calls
 
         class MockUsage:
             def __init__(self):
@@ -62,102 +160,37 @@ class ConversationPanel:
                 self.completion_tokens = 0
                 self.total_tokens = 0
 
-        return MockResponse()
+        # Generate mock response from captured actions
+        if self.human_demo_mode:
+            message_data = self.convert_actions_to_mock_response()
+        else:
+            # Default response for non-demo mode
+            message_data = {
+                "content": "MCP/Pygame mode - no OpenAI call made",
+                "tool_calls": None,
+            }
 
+        return MockResponse(message_data)
 
-class MinecraftControllerInterface:
-    """Interface adapter for MinecraftController to work with the conversation system"""
-
-    def __init__(self, servers_list, tools_list, mode="mcp"):
-        self.servers_list = servers_list
-        self.tools_list = tools_list
-        self.tool_mapping = {}
-        self.conv_panel = ConversationPanel()
-        self.controller = None
-        self.controller_thread = None
-        self.running = False
-        self.openai_client = None
-        self.mode = mode
-
-    def start_controller(self):
-        """Initialize pygame but don't start the controller yet (due to macOS threading restrictions)"""
-        if not self.running:
-            self.running = True
-            print("🎮 MinecraftController interface ready")
-            print("💡 Note: On macOS, pygame must run on main thread")
-            print("💡 Use 'controller' command to launch controller window")
-            print(
-                "💡 Controller will be available when needed for trajectory recording"
-            )
-
-    def get_response(self):
-        """Get response from OpenAI API - this is called by the generate() method"""
-        if not self.openai_client:
-            # Initialize OpenAI client if not already done
-            self.openai_client = AsyncOpenAI()
-
-        # This is a synchronous wrapper that will be called from the async generate() method
-        # The actual async work happens in the generate() method
-        # We just need to return a mock response that will be replaced
-        class MockResponse:
-            def __init__(self):
-                self.choices = [MockChoice()]
-
-        class MockChoice:
-            def __init__(self):
-                self.message = MockMessage()
-
-        class MockMessage:
-            def __init__(self):
-                self.content = "Response will be handled by generate() method"
-                self.tool_calls = None
-
-        return MockResponse()
-
-    async def execute_command(self, action):
-        """Execute MCP command through existing tools_mapping"""
+def create_user_message(captured_actions):
+    # Create a user message based on the captured actions
+    action_descriptions = []
+    for action in captured_actions:
         tool_name = action["tool"]
         params = action["parameters"]
-
-        # Execute via existing tools_mapping
-        if hasattr(self, "tools_mapping") and tool_name in self.tools_mapping:
-            result = await self.tools_mapping[tool_name](**params)
-
-            # Add to conversation chain if needed
-            if hasattr(self, "chain"):
-                self.chain = self.chain.bot(content=f"Executed {tool_name}")
+        if tool_name == "lookAngle":
+            x_angle = params.get("xAngle", 0)
+            y_angle = params.get("yAngle", 0)
+            action_descriptions.append(
+                f"look {x_angle:.1f}° horizontally, {y_angle:.1f}° vertically"
+            )
         else:
-            print(f"🔧 Tool {tool_name} not found in tools_mapping")
+            action_descriptions.append(f"use {tool_name}")
 
-    def launch_controller(self):
-        """Launch the MinecraftController on the main thread"""
-        try:
-            pygame.init()
-            self.controller = MinecraftController(mode=self.mode)
-
-            # Set controller to execute commands through our infrastructure
-            if self.mode == "mcp":
-                self.controller.set_mcp_executor(self)
-
-            print("🎮 Starting Minecraft Controller...")
-            print("💡 Controller window launched - use F5/F6 for trajectory recording")
-            self.controller.run()
-        except Exception as e:
-            print(f"Error launching controller: {e}")
-        finally:
-            self.running = False
-
-    def cleanup(self):
-        """Clean up the controller"""
-        self.running = False
-        if self.controller:
-            self.controller.running = False
-        try:
-            pygame.quit()
-        except:
-            pass
-        print("🎮 Minecraft Controller interface cleaned up")
-
+    user_message = (
+        f"I performed these actions: {', '.join(action_descriptions)}"
+    )
+    return user_message
 
 
 @dataclass(frozen=True)
@@ -473,6 +506,66 @@ class PygameMCPAsyncMessageChain:
                                 tool_call_id=tool_call.id,
                                 name=tool_name,
                             )
+
+                            # Print result if it's informative (like getBotStatus)
+                            if (
+                                tool_response_str
+                                and isinstance(tool_response_str, dict)
+                                and "content" in tool_response_str
+                            ):
+                                content = tool_response_str["content"]
+                                if isinstance(content, list) and len(content) > 0:
+                                    text_content = content[0].get("text", "")
+                                    if text_content:
+                                        # Print first line of result for feedback
+                                        first_line = text_content.split("\n")[0]
+                                        print(f"📋 Result: {first_line}")
+
+                            # Special handling for lookAngle - get updated bot status to see effect
+                            if (
+                                tool_name == "lookAngle"
+                                and "getBotStatus" in self.tools_mapping
+                            ):
+                                try:
+                                    print(
+                                        "👁️ Getting updated view after look command..."
+                                    )
+                                    status_result = await self.tools_mapping[
+                                        "getBotStatus"
+                                    ]()
+                                    if (
+                                        status_result
+                                        and isinstance(status_result, dict)
+                                        and "content" in status_result
+                                    ):
+                                        status_content = status_result["content"]
+                                        if (
+                                            isinstance(status_content, list)
+                                            and len(status_content) > 0
+                                        ):
+                                            status_text = status_content[0].get(
+                                                "text", ""
+                                            )
+                                            if status_text:
+                                                # Extract just the position and facing info
+                                                lines = status_text.split("\n")
+                                                position_line = (
+                                                    lines[0] if lines else ""
+                                                )
+                                                looking_at_line = [
+                                                    line
+                                                    for line in lines
+                                                    if "Looking at:" in line
+                                                ]
+                                                if looking_at_line:
+                                                    print(f"🎯 {position_line}")
+                                                    print(f"🎯 {looking_at_line[0]}")
+                                                else:
+                                                    print(f"🎯 {position_line}")
+                                except Exception as e:
+                                    print(
+                                        f"⚠️ Could not get updated status after look: {e}"
+                                    )
                     else:
                         # Handle case where tool is not found
                         error_msg = f"Tool '{tool_name}' not found in tools_mapping"
@@ -666,217 +759,356 @@ class PygameMCPAsyncMessageChain:
         return cls.from_dict(json.loads(json_str))
 
 
+class MinecraftControllerInterface:
+    """Interface for capturing human demonstrations in MCP mode and converting to trajectory data"""
+
+    def __init__(self, mode="mcp"):
+        from . import MinecraftController
+
+        self.mode = mode
+        self.conv_panel = ConversationPanel()
+        self.tools_mapping = {}
+        self.controller = None
+        self.trajectory_storage = TrajectoryStorage()
+
+        # Set up controller with MCP mode
+        if mode == "mcp":
+            self.conv_panel.human_demo_mode = True
+            print(f"🎮 MinecraftControllerInterface initialized in {mode} mode")
+
+    def capture_command(self, mcp_command):
+        """Capture MCP commands from controller AND execute them through MCP server"""
+        # First capture for trajectory recording
+        self.conv_panel.capture_mcp_action(mcp_command)
+        print(
+            f"📝 Interface captured: {mcp_command['tool']}({mcp_command['parameters']})"
+        )
+
+        # IMPORTANT: Also execute the command immediately through MCP server
+        # Create async task to execute the command (like getBotStatus)
+        import asyncio
+
+        try:
+            # Try to execute in current event loop
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Schedule execution without blocking
+                asyncio.create_task(self.execute_command(mcp_command))
+            else:
+                print("⚠️ No running event loop for command execution")
+        except Exception as e:
+            print(f"⚠️ Could not schedule command execution: {e}")
+
+    async def execute_command(self, action):
+        """Execute MCP command through existing tools_mapping (like getBotStatus)"""
+        tool_name = action["tool"]
+        params = action["parameters"]
+
+        print(f"🎮 Executing: {tool_name}({params})")
+
+        # Execute via existing tools_mapping (same as getBotStatus)
+        if tool_name in self.tools_mapping:
+            try:
+                result = await self.tools_mapping[tool_name](**params)
+                print(f"✅ Executed {tool_name} successfully")
+
+                # Print result if it's informative (like getBotStatus)
+                if result and isinstance(result, dict) and "content" in result:
+                    content = result["content"]
+                    if isinstance(content, list) and len(content) > 0:
+                        text_content = content[0].get("text", "")
+                        if text_content:
+                            # Print first line of result for feedback
+                            first_line = text_content.split("\n")[0]
+                            print(f"📋 Result: {first_line}")
+
+                # Special handling for lookAngle - get updated bot status to see effect
+                if tool_name == "lookAngle" and "getBotStatus" in self.tools_mapping:
+                    try:
+                        print("👁️ Getting updated view after look command...")
+                        status_result = await self.tools_mapping["getBotStatus"]()
+                        if (
+                            status_result
+                            and isinstance(status_result, dict)
+                            and "content" in status_result
+                        ):
+                            status_content = status_result["content"]
+                            if (
+                                isinstance(status_content, list)
+                                and len(status_content) > 0
+                            ):
+                                status_text = status_content[0].get("text", "")
+                                if status_text:
+                                    # Extract just the position and facing info
+                                    lines = status_text.split("\n")
+                                    position_line = lines[0] if lines else ""
+                                    looking_at_line = [
+                                        line for line in lines if "Looking at:" in line
+                                    ]
+                                    if looking_at_line:
+                                        print(f"🎯 {position_line}")
+                                        print(f"🎯 {looking_at_line[0]}")
+                                    else:
+                                        print(f"🎯 {position_line}")
+                    except Exception as e:
+                        print(f"⚠️ Could not get updated status after look: {e}")
+
+                return result
+            except Exception as e:
+                print(f"❌ Error executing {tool_name}: {e}")
+                import traceback
+
+                traceback.print_exc()
+                return None
+        else:
+            print(f"⚠️ Tool {tool_name} not found in tools_mapping")
+            available_tools = (
+                list(self.tools_mapping.keys()) if self.tools_mapping else []
+            )
+            print(f"💡 Available tools: {available_tools}")
+            return None
+
+    def set_controller(self, controller):
+        """Set the minecraft controller instance"""
+        self.controller = controller
+        controller.set_mcp_executor(self)
+        print(f"🔗 Controller connected to interface")
+
+    def start_trajectory_recording(self, session_name="human_demo"):
+        """Start recording human demonstration trajectory"""
+        self.trajectory_storage.start_session(session_name)
+        print(f"🎬 Started trajectory recording: {session_name}")
+
+    def stop_trajectory_recording(self):
+        """Stop recording and save trajectory"""
+        if self.conv_panel.captured_actions:
+            # Convert remaining actions to mock response
+            mock_response = self.conv_panel.convert_actions_to_mock_response()
+            trajectory = self.trajectory_storage.end_session(mock_response)
+            print(
+                f"🎬 Stopped recording. Saved trajectory with {len(trajectory.get('messages', []))} messages"
+            )
+            return trajectory
+        else:
+            print(f"🎬 Stopped recording. No actions captured.")
+            return None
+
+    def save_demonstration_step(self, user_context="exploring"):
+        """Save a demonstration step with captured actions"""
+        if self.conv_panel.captured_actions:
+            mock_response = self.conv_panel.convert_actions_to_mock_response()
+            self.trajectory_storage.add_step(user_context, mock_response)
+            print(f"💾 Saved demonstration step: {user_context}")
+            return True
+        return False
+
+
+class TrajectoryStorage:
+    """Handles storage and management of human demonstration trajectories"""
+
+    def __init__(self):
+        self.current_session = None
+        self.session_data = []
+
+    def start_session(self, session_name):
+        """Start a new trajectory recording session"""
+        self.current_session = {
+            "session_name": session_name,
+            "timestamp": time.time(),
+            "messages": [],
+            "actions": [],
+        }
+
+    def add_step(self, user_context, mock_response):
+        """Add a demonstration step to current session"""
+        if not self.current_session:
+            return
+
+        # Add user message describing context
+        user_message = {
+            "role": "user",
+            "content": user_context,
+            "timestamp": time.time(),
+        }
+
+        # Add assistant response with tool calls
+        assistant_message = {
+            "role": "assistant",
+            "content": mock_response["content"],
+            "tool_calls": mock_response["tool_calls"],
+            "timestamp": time.time(),
+        }
+
+        self.current_session["messages"].extend([user_message, assistant_message])
+
+        # Add tool results if there were tool calls
+        if mock_response["tool_calls"]:
+            for tool_call in mock_response["tool_calls"]:
+                tool_result = {
+                    "role": "tool",
+                    "content": f"Executed {tool_call['function']['name']} successfully",
+                    "tool_call_id": tool_call["id"],
+                    "name": tool_call["function"]["name"],
+                    "timestamp": time.time(),
+                }
+                self.current_session["messages"].append(tool_result)
+
+    def end_session(self, final_response=None):
+        """End current session and save trajectory"""
+        if not self.current_session:
+            return None
+
+        # Add final response if provided
+        if final_response:
+            self.add_step("final actions", final_response)
+
+        # Save to file
+        filename = f"trajectories/{self.current_session['session_name']}_{int(self.current_session['timestamp'])}.json"
+
+        # Create directory if it doesn't exist
+        import os
+
+        os.makedirs("trajectories", exist_ok=True)
+
+        # Save trajectory
+        with open(filename, "w") as f:
+            json.dump(self.current_session, f, indent=2)
+
+        trajectory = self.current_session
+        self.current_session = None
+
+        print(f"💾 Saved trajectory to {filename}")
+        return trajectory
 
 
 # if __name__ == "__main__":
 
 
-@dataclass
-class ChatSessionConfig:
-    """Configuration for chat session."""
-
-    servers: list["Server"]
-    initial_message: str | None = None
-    constant_msg: str | None = None
+# result = await self.chain.tools_mapping["getBotStatus"]()
 
 
-async def cleanup_servers(servers: list[Server]) -> None:
-    """Clean up all servers properly."""
-    for server in reversed(servers):
-        try:
-            await server.cleanup()
-        except Exception as e:
-            print(f"Warning during final cleanup: {e}")
+# Use the working tools_mapping from the chain (which was set by run_chat_session)
+# persistent_interface.tools_mapping = chain.tools_mapping or {}
+
+# print(f"🔍 DEBUG: Setting up persistent_interface...")
+# print(f"🔍 DEBUG: servers passed: {servers}")
+# print(f"🔍 DEBUG: chain.tools_mapping: {chain.tools_mapping}")
+# print(
+#     f"🔍 DEBUG: persistent_interface.tools_mapping: {persistent_interface.tools_mapping}"
+# )
+# if persistent_interface.tools_mapping:
+#     print(
+#         f"🔍 DEBUG: Available tools in interface: {list(persistent_interface.tools_mapping.keys())}"
+#     )
+# else:
+#     print(f"🔍 DEBUG: No tools found in interface!")
+#     print(f"🔍 DEBUG: This means the MCP server connection failed!")
+
+# # Test MCP connection BEFORE starting pygame controller
+# print(f"🔍 DEBUG: Testing MCP connection with getBotStatus...")
+# if (
+#     persistent_interface.tools_mapping
+#     and "getBotStatus" in persistent_interface.tools_mapping
+# ):
+#     try:
+#         import asyncio
 
 
-async def initialize_servers(servers: list[Server]) -> bool:
-    for server in servers:
-        try:
-            await server.initialize()
-        except Exception as e:
-            print(f"Failed to initialize server: {e}")
-            await cleanup_servers(servers)
-            return False
-    return True
+#         print(f"✅ MCP connection test successful!")
+#         print(f"📊 getBotStatus result: {result}")
+#     except Exception as e:
+#         print(f"❌ MCP connection test failed: {e}")
+#         print(f"💡 This suggests the MCP server is not running or not connected")
+#         print(f"💡 Please start: npx tsx minecraft-mcp-server.ts --transport stdio")
+#         import traceback
+
+#         print(f"🔍 DEBUG: MCP test error traceback:")
+#         traceback.print_exc()
+# else:
+#     print(f"❌ getBotStatus tool not found in tools_mapping")
+#     print(
+#         f"Available tools: {list(persistent_interface.tools_mapping.keys()) if persistent_interface.tools_mapping else 'None'}"
+#     )
+
+# Store reference in chain for generate() method to use
+# chain = replace(chain, persistent_interface=persistent_interface)
+
+# Start the controller in the background
+# persistent_interface.start_controller()
 
 
-async def handle_interactive_session(
-    chain: PygameMCPAsyncMessageChain,
-    servers: list = None,
-    initial_message: str | None = None,
-    constant_msg: str | None = None,
-) -> PygameMCPAsyncMessageChain:
+# print(f"🎯 IMPORTANT: Make sure you have:")
+# print(f"   1. Minecraft web client running (browser)")
+# print(f"   2. MCP server running: npx tsx minecraft-mcp-server.ts")
+# print(f"   3. Both should be connected on ws://localhost:8081")
 
-    # Create a persistent interface that will be reused across generate() calls
-    persistent_interface = MinecraftControllerInterface(
-        servers or [], chain.tools_list or []
-    )
-    persistent_interface.tools_mapping = chain.tools_mapping or {}
+# # Send initial message if provided
+# if initial_message:
+#     print(f"You: {initial_message}")
 
-    # Store reference in chain for generate() method to use
-    chain = replace(chain, persistent_interface=persistent_interface)
+#     # Handle special case for controller launch
+#     if initial_message.lower() == "controller":
+#         print("🎮 Launching Minecraft Controller...")
+#         print("💡 Controller will run with auto-generation of captured actions.")
 
+#         # Set up the chain for auto-processing
+#         persistent_interface.chain = chain
+#         persistent_interface.launch_controller()
 
-    # Start the controller in the background
-    persistent_interface.start_controller()
+#         # Return the updated chain after controller session
+#         return (
+#             persistent_interface.chain
+#             if hasattr(persistent_interface, "chain")
+#             else chain
+#         )
 
-    # Send initial message if provided
-    if initial_message:
-        print(f"You: {initial_message}")
-        chain = await chain.user(initial_message).generate_bot()
-        print(f"Assistant: {chain.last_response}")
+#     chain = await chain.user(initial_message).generate_bot()
+#     print(f"Assistant: {chain.last_response}")
 
-    print("Chat session started. Type 'quit' or 'exit' to end.")
+# print("Chat session started. Type 'quit' or 'exit' to end.")
 
-    while True:
-        try:
-            if constant_msg is not None:
-                user_input = constant_msg
-            else:
+# while True:
+#     try:
+#         if constant_msg is not None:
+#             user_input = constant_msg
+#         else:
 
-                user_input = input("You: ").strip()
-                if user_input.lower() in ["quit", "exit"]:
-                    print("\nExiting...")
-                    break
+#             user_input = input("You: ").strip()
+#             if user_input.lower() in ["quit", "exit"]:
+#                 print("\nExiting...")
+#                 break
 
-            if not user_input:
-                continue
+#         if not user_input:
+#             continue
 
-            # Handle special commands
-            if user_input.lower() == "controller":
-                print("🎮 Launching Minecraft Controller...")
-                print(
-                    "💡 This will open the controller window. Close it to return to chat."
-                )
-                persistent_interface.launch_controller()
-                continue
+#         # Handle special commands
+#         if user_input.lower() == "controller":
+#             print("🎮 Launching Minecraft Controller...")
+#             print(
+#                 "💡 This will open the controller window. Close it to return to chat."
+#             )
+#             persistent_interface.launch_controller()
+#             continue
 
-            # Use the new async-aware method
-            chain = await chain.user(user_input).generate_bot()
-            print(f"Assistant: {chain.last_response}")
+#         # Use the new async-aware method
+#         chain = await chain.user(user_input).generate_bot()
+#         print(f"Assistant: {chain.last_response}")
 
-        except KeyboardInterrupt:
-            print("\nExiting...")
-            break
-        except Exception as e:
-            print(f"Error during interaction: {e}")
-            continue
+#     except KeyboardInterrupt:
+#         print("\nExiting...")
+#         break
+#     except Exception as e:
+#         print(f"Error during interaction: {e}")
+#         continue
 
-    # Clean up pygame interface
-    if persistent_interface:
-        persistent_interface.cleanup()
+# # Clean up pygame interface
+# if persistent_interface:
+#     persistent_interface.cleanup()
 
-    return chain
-
-
-async def run_chat_session(config: ChatSessionConfig) -> None:
-    """Main chat session handler using functional paradigm.
-
-    Args:
-        config: Chat session configuration
-    """
-    try:
-        # Initialize servers
-        if not await initialize_servers(config.servers):
-            return
-
-        # Create tool functions and schemas
-        tool_schemas, tool_mapping = await create_tool_functions(config.servers)
-
-        # Initialize the chain
-        chain = (
-            PygameMCPAsyncMessageChain(
-                # model_name=config.model_name,
-                # base_url=config.base_url,
-                verbose=True,
-            )
-            .with_tools(tool_schemas, tool_mapping)
-            .system(
-                """You are a *very* ambitious minecraft player.
-Your goal is to find and aquire dirt, wood, stone, iron and diamonds. All in your quest to kill the Ender dragon.
-Follow Minecraft progression - wood first for tools, then stone, then dig deep for iron and diamonds.
-You are autonomous and you can do anything you want.
-I suggest making rotations of plus/minus 45 degrees at a time.
-Craft wooden tools before trying to mine harder materials like stone or terracotta (remember that they take a while to mine).
-Look for surface stone exposures, caves, or ravines rather than digging through hard blocks with bare hands
-Don't call multiple tools at once.
-"""
-            )
-        )
-
-        # Handle interactive session with optional initial message
-        chain = await handle_interactive_session(
-            chain, config.servers, config.initial_message, config.constant_msg
-        )
-
-    finally:
-        await cleanup_servers(config.servers)
-
-
-import argparse
-
-
-async def main() -> None:
-    """Initialize and run the chat session."""
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="MCP Client with OpenAI Message Chain")
-    parser.add_argument(
-        "--msg",
-        default="controller",
-        help="An optional first message to send to the assistant",
-    )
-    parser.add_argument(
-        "--constant-msg",
-        default=None,
-        help="An optional constant message to send to the assistant",
-    )
-
-    args = parser.parse_args()
-
-    config = Configuration()
-    try:
-        server_config = config.load_config("servers_config.json")
-    except FileNotFoundError:
-        server_config = {
-            "mcpServers": {
-                "echo": {"command": "python", "args": ["/Users/ohadr/chains/hello.py"]}
-            }
-        }
-        server_config = {
-            "mcpServers": {
-                "minecraft-controller_stdio": {
-                    "command": "npx",
-                    "args": [
-                        "tsx",
-                        "/Users/ohadr/scrape_lm_copy/minecraft-web-client/minecraft-mcp-server.ts",
-                        "--transport",
-                        "stdio",
-                    ],
-                    "env": {"NODE_NO_WARNINGS": "1"},
-                },
-            }
-        }
-
-    servers = [
-        Server(name, srv_config)
-        for name, srv_config in server_config["mcpServers"].items()
-    ]
-
-    chat_config = ChatSessionConfig(
-        servers=servers,
-        # api_key=config.llm_api_key,
-        # model_name=args.model,
-        # base_url=args.base_url,
-        initial_message=args.msg,
-        constant_msg=args.constant_msg,
-    )
-
-    await run_chat_session(chat_config)
+# return chain
 
 
 # python simple_client.py --msg "walk forwards in minecraft"
 # python simple_client.py --model "google/gemma-3-12b" --base-url "http://localhost:1234/v1" --msg "walk forwards in minecraft"
 # python simple_client.py --model "google/gemma-3-12b" --base-url "http://localhost:1234/v1" --msg "what's the weather in seattle?"
 # python simple_client.py --model "google/gemma-3-12b" --base-url "http://localhost:1234/v1" --msg "what's the weather in tel aviv?"
-if __name__ == "__main__":
-    asyncio.run(main())

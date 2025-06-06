@@ -6,8 +6,8 @@ The Minecraft MCP (Model Context Protocol) Server provides a standardized interf
 
 ## Connection Architecture
 
-```
-MCP Client (LLM/Agent) 
+```**
+MCP Client (LLM/Agent) **
     ↓ MCP Protocol
 MCP Server (TypeScript) 
     ↓ WebSocket (port 8081)

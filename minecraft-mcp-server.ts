@@ -268,6 +268,7 @@ function prettyPrintBotStatus(status: any): string {
     return lines.join('\n');
 }
 
+
 server.addTool({
     name: "getBotStatus",
     description: "Get comprehensive information about the bot's current state",

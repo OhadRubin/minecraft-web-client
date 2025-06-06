@@ -10,10 +10,14 @@ class LookPathTracker:
         self.movements: List[Dict] = []
         self.positions: List[Dict] = []
         self.max_history = 1000  # Limit history to prevent memory issues
-        self.inactivity_timeout_ms = inactivity_timeout_ms  # Default 2 seconds
+        self.inactivity_timeout_ms = inactivity_timeout_ms  # Default 2 seconds (still used for fallback)
         self.last_movement_time = None
         self.current_stats = None  # Store latest angle analysis
         self.execution_callback = None  # Callback for MCP command execution
+
+        # Mouse-based segmentation
+        self.mouse_tracking_active = False  # Track if mouse is currently pressed in camera area
+        self.mouse_released_pending = False  # Flag to execute on next opportunity
 
     def add_movement(self, movement_x: int, movement_y: int):
         """Add a new look movement to the history"""
@@ -203,7 +207,11 @@ class LookPathTracker:
             print(f"⏱️  Inactivity duration: {inactivity_duration_ms/1000:.1f}s\n")
 
             # NEW: Convert to MCP format for execution
-            if self.execution_callback:
+            if (
+                self.current_stats
+                and hasattr(self, "execution_callback")
+                and self.execution_callback
+            ):
                 total_x, total_y = self.current_stats["total_displacement"]
 
                 # Convert pixels to degrees (MCP server uses 5px = 1 degree)
@@ -220,12 +228,20 @@ class LookPathTracker:
                             "speed": "normal",
                         },
                     }
+                    print(
+                        f"🎯 Converting accumulated movement to MCP: {x_angle:.1f}°, {y_angle:.1f}°"
+                    )
                     self.execution_callback(mcp_command)
+                else:
+                    print(
+                        f"🔇 Movement too small for MCP conversion: {x_angle:.1f}°, {y_angle:.1f}°"
+                    )
         else:
             print(
                 f"🕐 Look path reset due to inactivity ({inactivity_duration_ms/1000:.1f}s gap)"
             )
 
+        # Reset movement data
         self.movements.clear()
         self.positions.clear()
         self.current_stats = None
@@ -285,6 +301,60 @@ class LookPathTracker:
     def set_execution_callback(self, callback):
         """Set callback to execute discrete MCP commands"""
         self.execution_callback = callback
+        print(f"🔗 LookPathTracker execution callback connected")
+
+    def start_mouse_tracking(self):
+        """Called when user starts dragging in camera area (mouse press)"""
+        if not self.mouse_tracking_active:
+            print("🖱️ Started mouse tracking for look path")
+            self.mouse_tracking_active = True
+            self.mouse_released_pending = False
+            # Don't reset here - keep accumulating movements
+
+    def stop_mouse_tracking(self):
+        """Called when user stops dragging in camera area (mouse release)"""
+        if self.mouse_tracking_active:
+            print("🖱️ Stopped mouse tracking - will execute command")
+            self.mouse_tracking_active = False
+            self.mouse_released_pending = True
+
+            # Execute accumulated movement immediately
+            self._execute_accumulated_movement("mouse_release")
+
+    def _execute_accumulated_movement(self, trigger_reason):
+        """Execute the accumulated movement as an MCP command"""
+        if self.current_stats and self.execution_callback:
+            total_x, total_y = self.current_stats["total_displacement"]
+
+            # Convert pixels to degrees (MCP server uses 5px = 1 degree)
+            x_angle = total_x / 5.0
+            y_angle = total_y / 5.0
+
+            # Only execute meaningful movements (filter noise)
+            if abs(x_angle) > 0.2 or abs(y_angle) > 0.2:
+                mcp_command = {
+                    "tool": "lookAngle",
+                    "parameters": {
+                        "xAngle": round(x_angle, 1),
+                        "yAngle": round(y_angle, 1),
+                        "speed": "normal",
+                    },
+                }
+                print(f"🎯 Executing accumulated look: {x_angle:.1f}°, {y_angle:.1f}° ({trigger_reason})")
+                self.execution_callback(mcp_command)
+
+                # Reset after execution
+                self._reset_tracking_data()
+            else:
+                print(f"🔇 Movement too small to execute: {x_angle:.1f}°, {y_angle:.1f}°")
+
+    def _reset_tracking_data(self):
+        """Reset tracking data but keep mouse state"""
+        self.movements.clear()
+        self.positions.clear()
+        self.current_stats = None
+        self.mouse_released_pending = False
+        print("🗑️ Reset look path tracking data")
 
 
 class LookPathVisualizationArea:

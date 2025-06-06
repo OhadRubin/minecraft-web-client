@@ -171,6 +171,11 @@ class Server:
         """Clean up server resources."""
         async with self._cleanup_lock:
             try:
+                # Give any active tool calls a brief moment to complete
+                # This helps prevent ClosedResourceError during shutdown
+                if self.session:
+                    await asyncio.sleep(0.1)
+
                 await self.exit_stack.aclose()
                 self.session = None
                 self.stdio_context = None
@@ -250,5 +255,3 @@ async def create_tool_functions(servers: list[Server]) -> tuple[list[dict], dict
             tool_mapping[tool.name] = make_tool_function(server, tool.name)
 
     return tool_schemas, tool_mapping
-
-

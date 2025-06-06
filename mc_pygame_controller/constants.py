@@ -8,6 +8,10 @@ WINDOW_WIDTH = 1600  # Increased from 1000
 WINDOW_HEIGHT = 900  # Increased from 600
 FPS = 60
 
+# Custom pygame events for MCP integration
+CUSTOM_MCP_TASK_EVENT = pygame.USEREVENT + 1
+CUSTOM_MCP_RESULT_EVENT = pygame.USEREVENT + 2
+
 # Colors
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)

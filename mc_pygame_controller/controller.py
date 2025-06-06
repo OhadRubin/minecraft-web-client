@@ -5,16 +5,19 @@ import threading
 import sys
 import argparse
 from typing import Optional
+import time
 
 import pygame
 
 from .constants import *
 from .look_path import LookPathTracker, LookPathVisualizationArea
 from .ui_elements import Button, ToggleButton, VirtualJoystick, KeyboardMovement, TouchArea
+import argparse
+
 
 class MinecraftController:
 
-    def __init__(self, mode="pygame"):
+    def __init__(self, mode="pygame", chain_args=None):
         self.mode = mode  # "pygame" or "mcp"
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Minecraft Web Client Controller")
@@ -26,6 +29,13 @@ class MinecraftController:
         self.look_visualization = LookPathVisualizationArea(
             1230, 50, 350, 300
         )  # Right side visualization
+
+        if chain_args is not None:
+            self.chain = chain_args[1]
+            self.servers = chain_args[0]
+        else:
+            self.servers = []
+            self.chain = None
 
         # UI Elements
         self.movement_joystick = VirtualJoystick(
@@ -107,6 +117,26 @@ class MinecraftController:
             (150, 75, 0),  # Brown color
         )
 
+        # Add getBotStatus test button
+        self.test_status_btn = Button(
+            start_x,
+            start_y + spacing * 5,
+            button_width * 2 + 10,  # Wider button
+            button_height,
+            "Test getBotStatus",
+            (0, 150, 75),  # Teal color
+        )
+
+        # Add save demonstration button (MCP mode only)
+        self.save_demo_btn = Button(
+            start_x,
+            start_y + spacing * 6,
+            button_width * 2 + 10,  # Wider button
+            button_height,
+            "Save Demo Step",
+            (150, 0, 150),  # Purple color
+        )
+
         # Hotbar Slot Buttons (1-9)
         hotbar_button_width = 50
         hotbar_button_height = 40
@@ -148,6 +178,9 @@ class MinecraftController:
         self.font = pygame.font.Font(None, 36)
         self.small_font = pygame.font.Font(None, 24)
 
+        # Mouse tracking state for camera area
+        self.camera_was_touching = False
+
         # Keyboard shortcut states
         self._ctrl_pressed = False
         self._tab_pressed = False
@@ -163,6 +196,12 @@ class MinecraftController:
         # Connect LookPathTracker for MCP mode
         if self.mode == "mcp":
             self.look_path_tracker.set_execution_callback(self.execute_mcp_action)
+
+        # Asyncio integration (following asyncio_pygame_example.py pattern)
+        self.event_loop = None
+        self.event_queue = None
+        self.command_queue = None
+        self.result_queue = None  # Queue for MCP results
 
     async def connect_websocket(self):
         try:
@@ -229,8 +268,21 @@ class MinecraftController:
             abs(movement_x - self.last_movement[0]) > 0.1
             or abs(movement_z - self.last_movement[1]) > 0.1
         ):
-            command = {"type": "move", "x": movement_x, "z": movement_z}
-            self.send_command_sync(command)
+            if self.mode == "pygame":
+                command = {"type": "move", "x": movement_x, "z": movement_z}
+                self.send_command_sync(command)
+            else:  # mcp mode
+                # Convert movement to walk command
+                if abs(movement_x) > 0.1 or abs(movement_z) > 0.1:
+                    # Calculate duration based on movement magnitude
+                    magnitude = (movement_x**2 + movement_z**2) ** 0.5
+                    duration = int(magnitude * 2000)  # Scale to reasonable duration
+                    self.handle_other_commands(
+                        "walk",
+                        duration=duration,
+                        direction={"x": movement_x, "z": movement_z},
+                    )
+
             self.last_movement = (movement_x, movement_z)
 
     def handle_camera_look(self, delta_x: int, delta_y: int):
@@ -294,28 +346,39 @@ class MinecraftController:
 
     def handle_jump(self, pressed: bool):
         if pressed and not self.jumping:
-            self.send_command_sync(
-                {"type": "control", "control": "jump", "state": True}
-            )
+            if self.mode == "pygame":
+                self.send_command_sync(
+                    {"type": "control", "control": "jump", "state": True}
+                )
+            else:  # mcp mode
+                self.handle_other_commands("jump", duration="short")
             self.jumping = True
         elif not pressed and self.jumping:
-            self.send_command_sync(
-                {"type": "control", "control": "jump", "state": False}
-            )
+            if self.mode == "pygame":
+                self.send_command_sync(
+                    {"type": "control", "control": "jump", "state": False}
+                )
+            # Note: MCP jump is a single action, not separate up/down
             self.jumping = False
 
     def handle_sneak(self, toggled: bool):
         if toggled != self.sneaking:
-            self.send_command_sync(
-                {"type": "control", "control": "sneak", "state": toggled}
-            )
+            if self.mode == "pygame":
+                self.send_command_sync(
+                    {"type": "control", "control": "sneak", "state": toggled}
+                )
+            else:  # mcp mode
+                self.handle_other_commands("sneak", state=toggled)
             self.sneaking = toggled
 
     def handle_sprint(self, toggled: bool):
         if toggled != self.sprinting:
-            self.send_command_sync(
-                {"type": "control", "control": "sprint", "state": toggled}
-            )
+            if self.mode == "pygame":
+                self.send_command_sync(
+                    {"type": "control", "control": "sprint", "state": toggled}
+                )
+            else:  # mcp mode
+                self.handle_other_commands("sprint", state=toggled)
             self.sprinting = toggled
 
     def handle_control_button(self, control: str, state: bool):
@@ -324,11 +387,14 @@ class MinecraftController:
 
     def handle_inventory(self):
         # Send 'e' key command for inventory
-        command = {"type": "control", "control": "inventory", "state": True}
-        self.send_command_sync(command)
-        # Immediately release
-        command = {"type": "control", "control": "inventory", "state": False}
-        self.send_command_sync(command)
+        if self.mode == "pygame":
+            command = {"type": "control", "control": "inventory", "state": True}
+            self.send_command_sync(command)
+            # Immediately release
+            command = {"type": "control", "control": "inventory", "state": False}
+            self.send_command_sync(command)
+        else:  # mcp mode
+            self.handle_other_commands("openInventory")
 
     def handle_hotbar_slot(self, slot: int):
         """Handle hotbar slot selection (slot should be 0-8)"""
@@ -345,14 +411,20 @@ class MinecraftController:
     def handle_drop_item(self):
         """Handle dropping 1 item from current hotbar slot"""
         print("DROP ITEM - sending command")
-        command = {"type": "dropItem", "amount": 1}
-        self.send_command_sync(command)
+        if self.mode == "pygame":
+            command = {"type": "dropItem", "amount": 1}
+            self.send_command_sync(command)
+        else:  # mcp mode
+            self.handle_other_commands("dropItem", amount=1)
 
     def handle_swap_hands(self):
         """Handle swapping main hand and off-hand items"""
         print("SWAP HANDS - sending command")
-        command = {"type": "swapHands"}
-        self.send_command_sync(command)
+        if self.mode == "pygame":
+            command = {"type": "swapHands"}
+            self.send_command_sync(command)
+        else:  # mcp mode
+            self.handle_other_commands("swapHands")
 
     def handle_clear_path(self):
         """Handle clearing the look path"""
@@ -363,7 +435,8 @@ class MinecraftController:
         """Execute MCP-formatted action directly"""
         if self.mcp_executor:
             print(f"🎮 Executing: {mcp_command['tool']}({mcp_command['parameters']})")
-            self.mcp_executor.execute_command(mcp_command)
+            # Call the sync version that just captures the action
+            self.mcp_executor.capture_command(mcp_command)
         else:
             print(
                 f"🎮 MCP Command (no executor): {mcp_command['tool']}({mcp_command['parameters']})"
@@ -410,6 +483,21 @@ class MinecraftController:
             return {
                 "tool": "sprint",
                 "parameters": {"state": params.get("state", True)},
+            }
+        elif command_type == "openInventory":
+            return {
+                "tool": "openInventory",
+                "parameters": {},
+            }
+        elif command_type == "dropItem":
+            return {
+                "tool": "dropItem",
+                "parameters": {"amount": params.get("amount", 1)},
+            }
+        elif command_type == "swapHands":
+            return {
+                "tool": "swapHands",
+                "parameters": {},
             }
         # Add more mappings as needed
         return None
@@ -472,6 +560,8 @@ class MinecraftController:
         self.drop_btn.draw(self.screen)
         self.swap_hands_btn.draw(self.screen)
         self.clear_path_btn.draw(self.screen)
+        self.test_status_btn.draw(self.screen)
+        self.save_demo_btn.draw(self.screen)
 
         # Draw hotbar slot buttons
         for i, button in enumerate(self.hotbar_buttons):
@@ -566,10 +656,16 @@ class MinecraftController:
             )
             # Start WebSocket connection only in pygame mode
             self.start_websocket_connection()
+            # Use traditional pygame event loop for pygame mode
+            self._run_pygame_loop()
         else:
             print("Commands will be converted to MCP format and executed via callback")
             print("No WebSocket connection needed in MCP mode")
+            # MCP mode is now handled by handle_interactive_session function
+            print("MCP mode should be started via handle_interactive_session()")
 
+    def _run_pygame_loop(self):
+        """Traditional pygame event loop for pygame mode"""
         while self.running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -589,7 +685,12 @@ class MinecraftController:
             # Get keyboard state
             keys_pressed = pygame.key.get_pressed()
 
-            # Handle keyboard movement (similar to joystick)
+            # Handle all the pygame input logic...
+
+            # Draw everything
+            self.draw_ui()
+            self.clock.tick(FPS)
+
             keyboard_move_x, keyboard_move_y = self.keyboard_movement.handle_keyboard(
                 keys_pressed
             )
@@ -690,6 +791,21 @@ class MinecraftController:
 
             # Handle camera look area
             delta_x, delta_y = self.camera_area.handle_mouse(mouse_pos, mouse_pressed)
+
+            # Track mouse press/release state changes for MCP mode
+            if self.mode == "mcp":
+                camera_is_touching = self.camera_area.is_touching
+
+                # Detect state changes
+                if camera_is_touching and not self.camera_was_touching:
+                    # Mouse just pressed in camera area
+                    self.look_path_tracker.start_mouse_tracking()
+                elif not camera_is_touching and self.camera_was_touching:
+                    # Mouse just released from camera area
+                    self.look_path_tracker.stop_mouse_tracking()
+
+                self.camera_was_touching = camera_is_touching
+
             self.handle_camera_look(delta_x, delta_y)
 
             # Handle action buttons
@@ -727,6 +843,14 @@ class MinecraftController:
             # Handle clear path button
             if self.clear_path_btn.handle_mouse(mouse_pos, mouse_pressed):
                 self.handle_clear_path()
+
+            # Handle test status button
+            if self.test_status_btn.handle_mouse(mouse_pos, mouse_pressed):
+                self.handle_test_status()
+
+            # Handle save demonstration button (MCP mode only)
+            if self.save_demo_btn.handle_mouse(mouse_pos, mouse_pressed):
+                self.handle_save_demonstration()
 
             # Handle hotbar slot buttons
             for i, button in enumerate(self.hotbar_buttons):
@@ -767,19 +891,421 @@ class MinecraftController:
             elif not c_pressed and hasattr(self, "_last_c_pressed"):
                 delattr(self, "_last_c_pressed")
 
+        # MCP tasks are now handled in animation_loop
+
+    def _handle_all_inputs(self, mouse_pos, mouse_pressed, keys_pressed):
+        """Handle all input processing (extracted from main loop)"""
+        # Handle keyboard shortcuts
+        ctrl_pressed = keys_pressed[pygame.K_LCTRL] or keys_pressed[pygame.K_RCTRL]
+        tab_pressed = keys_pressed[pygame.K_TAB]
+        z_pressed = keys_pressed[pygame.K_z]
+        x_pressed = keys_pressed[pygame.K_x]
+        space_pressed = keys_pressed[pygame.K_SPACE]
+        q_pressed = keys_pressed[pygame.K_q]
+        f_pressed = keys_pressed[pygame.K_f]
+
+        # Store keyboard shortcut states for UI display
+        self._ctrl_pressed = ctrl_pressed
+        self._tab_pressed = tab_pressed
+        self._z_pressed = z_pressed
+        self._x_pressed = x_pressed
+        self._space_pressed = space_pressed
+        self._q_pressed = q_pressed
+        self._f_pressed = f_pressed
+
+        # Handle clicks
+        left_click_input = ctrl_pressed or z_pressed
+        right_click_input = tab_pressed or x_pressed
+
+        # Handle action buttons
+        self.left_click_btn.handle_mouse(mouse_pos, mouse_pressed)
+        self.handle_left_click(self.left_click_btn.is_pressed or left_click_input)
+
+        self.right_click_btn.handle_mouse(mouse_pos, mouse_pressed)
+        self.handle_right_click(self.right_click_btn.is_pressed or right_click_input)
+
+        self.jump_btn.handle_mouse(mouse_pos, mouse_pressed)
+        self.handle_jump(self.jump_btn.is_pressed or space_pressed)
+
+        # Handle toggle buttons
+        if self.sneak_btn.handle_mouse(mouse_pos, mouse_pressed):
+            self.handle_sneak(self.sneak_btn.is_toggled)
+        if self.sprint_btn.handle_mouse(mouse_pos, mouse_pressed):
+            self.handle_sprint(self.sprint_btn.is_toggled)
+
+        # Handle other buttons
+        if self.inventory_btn.handle_mouse(mouse_pos, mouse_pressed):
+            self.handle_inventory()
+        if self.drop_btn.handle_mouse(mouse_pos, mouse_pressed):
+            self.handle_drop_item()
+        if self.swap_hands_btn.handle_mouse(mouse_pos, mouse_pressed):
+            self.handle_swap_hands()
+        if self.clear_path_btn.handle_mouse(mouse_pos, mouse_pressed):
+            self.handle_clear_path()
+
+        # Handle test status button (MCP mode only)
+        if self.test_status_btn.handle_mouse(mouse_pos, mouse_pressed):
+            self.handle_test_status()
+
+        # Handle save demonstration button (MCP mode only)
+        if self.save_demo_btn.handle_mouse(mouse_pos, mouse_pressed):
+            self.handle_save_demonstration()
+
+        # Handle hotbar buttons
+        for i, button in enumerate(self.hotbar_buttons):
+            if button.handle_mouse(mouse_pos, mouse_pressed):
+                self.handle_hotbar_slot(i)
+
+        # Handle keyboard shortcuts for various actions
+        self._handle_keyboard_shortcuts(q_pressed, f_pressed, keys_pressed)
+
+    def _handle_keyboard_shortcuts(self, q_pressed, f_pressed, keys_pressed):
+        """Handle keyboard shortcuts with proper press/release detection"""
+        # Handle Q key (drop item)
+        if q_pressed and not hasattr(self, "_last_q_pressed"):
+            self.handle_drop_item()
+            self._last_q_pressed = True
+        elif not q_pressed and hasattr(self, "_last_q_pressed"):
+            delattr(self, "_last_q_pressed")
+
+        # Handle F key (swap hands)
+        if f_pressed and not hasattr(self, "_last_f_pressed"):
+            self.handle_swap_hands()
+            self._last_f_pressed = True
+        elif not f_pressed and hasattr(self, "_last_f_pressed"):
+            delattr(self, "_last_f_pressed")
+
+        # Handle hotbar keys (1-9)
+        hotbar_keys = [
+            pygame.K_1,
+            pygame.K_2,
+            pygame.K_3,
+            pygame.K_4,
+            pygame.K_5,
+            pygame.K_6,
+            pygame.K_7,
+            pygame.K_8,
+            pygame.K_9,
+        ]
+        for i, key in enumerate(hotbar_keys):
+            key_pressed = keys_pressed[key]
+            last_key_attr = f"_last_hotbar_{i}_pressed"
+            if key_pressed and not hasattr(self, last_key_attr):
+                self.handle_hotbar_slot(i)
+                setattr(self, last_key_attr, True)
+            elif not key_pressed and hasattr(self, last_key_attr):
+                delattr(self, last_key_attr)
+
+        # Handle C key (clear path)
+        c_pressed = keys_pressed[pygame.K_c]
+        if c_pressed and not hasattr(self, "_last_c_pressed"):
+            self.handle_clear_path()
+            self._last_c_pressed = True
+        elif not c_pressed and hasattr(self, "_last_c_pressed"):
+            delattr(self, "_last_c_pressed")
+
+    async def animation_loop(self):
+        """Main animation loop following asyncio_pygame_example.py pattern"""
+        current_time = 0
+
+        while self.running:
+            last_time, current_time = current_time, time.time()
+
+            # Handle pygame events on main thread
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    self.running = False
+                    break
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        self.running = False
+                        break
+                    elif event.key == pygame.K_r and self.mode == "pygame":
+                        self.connected = False
+                        self.start_websocket_connection()
+
+            if not self.running:
+                break
+
+            # Handle input and rendering
+            mouse_pos = pygame.mouse.get_pos()
+            mouse_pressed = pygame.mouse.get_pressed()[0]
+            keys_pressed = pygame.key.get_pressed()
+
+            keyboard_move_x, keyboard_move_y = self.keyboard_movement.handle_keyboard(keys_pressed)
+
+            # Handle movement
+            joystick_move_x, joystick_move_y = self.movement_joystick.handle_mouse(mouse_pos, mouse_pressed)
+            if abs(joystick_move_x) < 0.1 and abs(joystick_move_y) < 0.1:
+                self.handle_movement(keyboard_move_x, keyboard_move_y)
+            else:
+                self.handle_movement(joystick_move_x, joystick_move_y)
+
+            # Handle camera look
+            delta_x, delta_y = self.camera_area.handle_mouse(mouse_pos, mouse_pressed)
+            self.handle_camera_look(delta_x, delta_y)
+
+            # Handle all buttons and controls
+            self._handle_all_inputs(mouse_pos, mouse_pressed, keys_pressed)
+
             # Draw everything
             self.draw_ui()
-            self.clock.tick(FPS)
 
-        # Cleanup
-        self.connected = False
-        if self.websocket:
-            asyncio.run(self.websocket.close())
+            # Frame rate limiting (similar to asyncio_pygame_example.py)
+            sleep_time = min(1 / FPS - (current_time - last_time - 1 / FPS), 1 / FPS)
+            await asyncio.sleep(max(sleep_time, 0.001))
 
+    async def test_get_bot_status_startup(self, chain):
+        """Test getBotStatus at startup"""
+        try:
+            print("🧪 Testing getBotStatus at startup...")
+            result = await chain.tools_mapping["getBotStatus"]()
+            print(f"📊 Startup getBotStatus result: {result}")
+        except Exception as e:
+            print(f"❌ Startup getBotStatus failed: {e}")
+
+    async def execute_mcp_command_async(self, command_name, **params):
+        """Execute MCP command asynchronously and return result"""
+        if not self.command_queue:
+            print("❌ Command queue not initialized")
+            return None
+
+        # Put command in queue
+        await self.command_queue.put({"command": command_name, "params": params})
+
+        # Wait for result
+        if self.result_queue:
+            try:
+                result_data = await asyncio.wait_for(
+                    self.result_queue.get(), timeout=10.0
+                )
+                if result_data.get("success"):
+                    return result_data.get("result")
+                else:
+                    print(f"❌ MCP command failed: {result_data.get('error')}")
+                    return None
+            except asyncio.TimeoutError:
+                print(f"⏰ MCP command timed out: {command_name}")
+                return None
+
+        return None
+
+    def handle_test_status(self):
+        """Handle test getBotStatus button click"""
+        if self.mode == "mcp" and self.chain and self.chain.tools_mapping:
+            print("🧪 Manual getBotStatus test triggered!")
+            # Create a task to run the test
+            asyncio.create_task(self._trigger_get_bot_status())
+        else:
+            print("⚠️ getBotStatus test only available in MCP mode")
+
+    async def _trigger_get_bot_status(self):
+        """Trigger getBotStatus command asynchronously"""
+        try:
+            result = await self.chain.tools_mapping["getBotStatus"]()
+            print(f"🎯 Manual getBotStatus result: {result}")
+        except Exception as e:
+            print(f"❌ Manual getBotStatus failed: {e}")
+
+    def handle_save_demonstration(self):
+        """Handle saving a demonstration step"""
+        if self.mode == "mcp" and self.mcp_executor:
+            print("💾 Saving demonstration step...")
+            # Generate a context description based on recent actions
+            user_context = "exploring and performing actions"
+            success = self.mcp_executor.save_demonstration_step(user_context)
+            if success:
+                print("✅ Demonstration step saved successfully!")
+            else:
+                print("⚠️ No actions to save in this step")
+        else:
+            print("⚠️ Demonstration saving only available in MCP mode")
+
+
+from dataclasses import dataclass, field, replace
+import json
+from typing import List, Dict, Union, Any, Optional, Tuple, Type
+from functools import wraps
+import inspect
+import os
+import base64
+import httpx
+import mimetypes
+from openai import AsyncOpenAI
+from pydantic import BaseModel
+import asyncio
+from .mcp_server import Server, create_tool_functions, Configuration
+import pygame
+import threading
+import time
+from .chain_utils import (
+    chain_method,
+    encode_base64_content_from_url,
+    _encode_to_data_uri,
+    _resolve_multimodal_args,
+    _resolve_multimodal_output,
+)
+
+from .message_chain import PygameMCPAsyncMessageChain
+
+
+@dataclass
+class ChatSessionConfig:
+    """Configuration for chat session."""
+
+    servers: list["Server"]
+    initial_message: str | None = None
+    constant_msg: str | None = None
+
+
+async def cleanup_servers(servers: list[Server]) -> None:
+    """Clean up all servers properly."""
+    print("🔧 Starting server cleanup...")
+
+    # Give active operations a moment to complete before cleanup
+    await asyncio.sleep(0.5)
+    print("🔧 Proceeding with MCP server cleanup...")
+
+    for server in reversed(servers):
+        try:
+            print(f"🔧 Cleaning up server: {server.name}")
+            await server.cleanup()
+            print(f"✅ Server {server.name} cleaned up successfully")
+        except Exception as e:
+            print(f"⚠️ Warning during cleanup of {server.name}: {e}")
+
+    print("🔧 Server cleanup completed")
+
+
+async def initialize_servers(servers: list[Server]) -> bool:
+    for server in servers:
+        try:
+            await server.initialize()
+        except Exception as e:
+            print(f"Failed to initialize server: {e}")
+            await cleanup_servers(servers)
+            return False
+    return True
+
+
+def pygame_event_loop(loop, event_queue):
+    """Handle pygame events in separate thread"""
+    while True:
+        try:
+            event = pygame.event.wait()
+            asyncio.run_coroutine_threadsafe(event_queue.put(event), loop=loop)
+        except Exception as e:
+            print(f"Error in pygame event loop: {e}")
+            break
+
+
+async def handle_interactive_session(
+    chain: PygameMCPAsyncMessageChain,
+    servers: list = None,
+    initial_message: str | None = None,
+    constant_msg: str | None = None,
+) -> PygameMCPAsyncMessageChain:
+    """Run pygame controller with MCP integration using asyncio pattern"""
+
+    # Initialize pygame
+    pygame.init()
+    pygame.display.set_caption("Minecraft Web Client Controller - MCP Mode")
+
+    # Create MinecraftControllerInterface for human demonstration capture
+    from .message_chain import MinecraftControllerInterface
+
+    interface = MinecraftControllerInterface(mode="mcp")
+    interface.tools_mapping = chain.tools_mapping or {}
+
+    # Start trajectory recording for human demonstrations
+    interface.start_trajectory_recording("human_demo_session")
+
+    # Set interface as persistent interface for the chain
+    chain = replace(chain, persistent_interface=interface)
+
+    # Create controller
+    controller = MinecraftController(mode="mcp", chain_args=(servers, chain))
+
+    # Connect controller to interface for command capture
+    interface.set_controller(controller)
+
+    # Start async tasks (no separate thread for events)
+    animation_task = asyncio.create_task(controller.animation_loop())
+
+    # Test getBotStatus at startup
+    if chain and chain.tools_mapping and "getBotStatus" in chain.tools_mapping:
+        test_task = asyncio.create_task(controller.test_get_bot_status_startup(chain))
+
+    try:
+        # Run until controller signals to stop
+        while controller.running:
+            await asyncio.sleep(0.1)
+
+    except KeyboardInterrupt:
+        print("Interrupted by user")
+    finally:
+        controller.running = False
+
+        # Save any remaining demonstration data
+        trajectory = interface.stop_trajectory_recording()
+        if trajectory:
+            print(
+                f"💾 Human demonstration saved with {len(trajectory.get('messages', []))} messages"
+            )
+
+        animation_task.cancel()
+        if 'test_task' in locals():
+            test_task.cancel()
         pygame.quit()
-        sys.exit()
+
+    return chain
 
 
+async def run_chat_session(config: ChatSessionConfig) -> None:
+    """Main chat session handler using functional paradigm.
+
+    Args:
+        config: Chat session configuration
+    """
+    try:
+        # Initialize servers
+        if not await initialize_servers(config.servers):
+            return
+
+        # Create tool functions and schemas
+        tool_schemas, tool_mapping = await create_tool_functions(config.servers)
+
+        # Initialize the chain
+        chain = (
+            PygameMCPAsyncMessageChain(
+                # model_name=config.model_name,
+                # base_url=config.base_url,
+                verbose=True,
+            )
+            .with_tools(tool_schemas, tool_mapping)
+            .system(
+                """You are a *very* ambitious minecraft player.
+Your goal is to find and aquire dirt, wood, stone, iron and diamonds. All in your quest to kill the Ender dragon.
+Follow Minecraft progression - wood first for tools, then stone, then dig deep for iron and diamonds.
+You are autonomous and you can do anything you want.
+I suggest making rotations of plus/minus 45 degrees at a time.
+Craft wooden tools before trying to mine harder materials like stone or terracotta (remember that they take a while to mine).
+Look for surface stone exposures, caves, or ravines rather than digging through hard blocks with bare hands
+Don't call multiple tools at once.
+"""
+            )
+        )
+
+        # Handle interactive session with optional initial message
+        chain = await handle_interactive_session(
+            chain, config.servers, config.initial_message, config.constant_msg
+        )
+
+    finally:
+        await cleanup_servers(config.servers)
+
+
+# python -m mc_pygame_controller.controller --mcp
 if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Minecraft Web Client Controller")
@@ -794,5 +1320,50 @@ if __name__ == "__main__":
     mode = "mcp" if args.mcp else "pygame"
 
     # Create and run controller
-    controller = MinecraftController(mode=mode)
-    controller.run()
+    if mode == "pygame":
+        controller = MinecraftController(mode=mode)
+        controller.run()
+    else:
+        async def runner():
+
+            config = Configuration()
+            try:
+                server_config = config.load_config("servers_config.json")
+            except FileNotFoundError:
+                server_config = {
+                    "mcpServers": {
+                        "echo": {
+                            "command": "python",
+                            "args": ["/Users/ohadr/chains/hello.py"],
+                        }
+                    }
+                }
+                server_config = {
+                    "mcpServers": {
+                        "minecraft-controller_stdio": {
+                            "command": "npx",
+                            "args": [
+                                "tsx",
+                                "/Users/ohadr/scrape_lm_copy/minecraft-web-client/minecraft-mcp-server.ts",
+                                "--transport",
+                                "stdio",
+                            ],
+                            "env": {"NODE_NO_WARNINGS": "1"},
+                        },
+                    }
+                }
+
+            servers = [
+                Server(name, srv_config)
+                for name, srv_config in server_config["mcpServers"].items()
+            ]
+
+            chat_config = ChatSessionConfig(
+                servers=servers,
+                initial_message=None,
+                constant_msg=None,
+            )
+
+            await run_chat_session(chat_config)
+
+        asyncio.run(runner())
