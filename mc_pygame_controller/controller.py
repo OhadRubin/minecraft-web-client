@@ -157,6 +157,13 @@ class MinecraftController:
         self._q_pressed = False
         self._f_pressed = False
 
+        # MCP execution state (mode-independent)
+        self.mcp_executor = None
+
+        # Connect LookPathTracker for MCP mode
+        if self.mode == "mcp":
+            self.look_path_tracker.set_execution_callback(self.execute_mcp_action)
+
     async def connect_websocket(self):
         try:
             uri = "ws://localhost:8081"
@@ -235,41 +242,54 @@ class MinecraftController:
             # Add to path tracker
             self.look_path_tracker.add_movement(scaled_x, scaled_y)
 
-            command = {"type": "look", "movementX": scaled_x, "movementY": scaled_y}
-            self.send_command_sync(command)
+            # Only send WebSocket command in pygame mode
+            # In MCP mode, LookPathTracker will handle conversion via callback
+            if self.mode == "pygame":
+                command = {"type": "look", "movementX": scaled_x, "movementY": scaled_y}
+                self.send_command_sync(command)
 
     def handle_left_click(self, pressed: bool):
         if pressed and not self.left_clicking:
             print("LEFT CLICK DOWN - sending command")
-            self.send_command_sync(
-                {
-                    "type": "documentMouseEvent",
-                    "button": 0,
-                    "action": "down",
-                    "updateMouse": True,
-                }
-            )
+            if self.mode == "pygame":
+                self.send_command_sync(
+                    {
+                        "type": "documentMouseEvent",
+                        "button": 0,
+                        "action": "down",
+                        "updateMouse": True,
+                    }
+                )
+            else:
+                self.handle_other_commands("left_click", duration="medium")
             self.left_clicking = True
         elif not pressed and self.left_clicking:
             print("LEFT CLICK UP - sending command")
-            self.send_command_sync(
-                {
-                    "type": "documentMouseEvent",
-                    "button": 0,
-                    "action": "up",
-                    "updateMouse": False,
-                }
-            )
+            if self.mode == "pygame":
+                self.send_command_sync(
+                    {
+                        "type": "documentMouseEvent",
+                        "button": 0,
+                        "action": "up",
+                        "updateMouse": False,
+                    }
+                )
+            # Note: MCP leftClick is a single action, not separate up/down
             self.left_clicking = False
 
     def handle_right_click(self, pressed: bool):
         if pressed and not self.right_clicking:
             print("RIGHT CLICK DOWN - sending command")
-            self.send_command_sync({"type": "rightDown"})
+            if self.mode == "pygame":
+                self.send_command_sync({"type": "rightDown"})
+            else:
+                self.handle_other_commands("right_click", duration="medium")
             self.right_clicking = True
         elif not pressed and self.right_clicking:
             print("RIGHT CLICK UP - sending command")
-            self.send_command_sync({"type": "rightUp"})
+            if self.mode == "pygame":
+                self.send_command_sync({"type": "rightUp"})
+            # Note: MCP rightClick is a single action, not separate up/down
             self.right_clicking = False
 
     def handle_jump(self, pressed: bool):
@@ -314,8 +334,11 @@ class MinecraftController:
         """Handle hotbar slot selection (slot should be 0-8)"""
         if 0 <= slot <= 8 and slot != self.last_hotbar_slot:
             print(f"HOTBAR SLOT {slot + 1} - sending command")
-            command = {"type": "setHotbarSlot", "slot": slot}
-            self.send_command_sync(command)
+            if self.mode == "pygame":
+                command = {"type": "setHotbarSlot", "slot": slot}
+                self.send_command_sync(command)
+            else:
+                self.handle_other_commands("setHotbarSlot", slot=slot)
             self.current_hotbar_slot = slot
             self.last_hotbar_slot = slot
 
@@ -335,6 +358,69 @@ class MinecraftController:
         """Handle clearing the look path"""
         self.look_path_tracker.clear_history()
         print("Look path cleared!")
+
+    def execute_mcp_action(self, mcp_command):
+        """Execute MCP-formatted action directly"""
+        if self.mcp_executor:
+            print(f"🎮 Executing: {mcp_command['tool']}({mcp_command['parameters']})")
+            self.mcp_executor.execute_command(mcp_command)
+        else:
+            print(
+                f"🎮 MCP Command (no executor): {mcp_command['tool']}({mcp_command['parameters']})"
+            )
+
+    def set_mcp_executor(self, executor):
+        """Set the MCP command executor"""
+        self.mcp_executor = executor
+
+    def convert_to_mcp_format(self, command_type, params):
+        """Convert pygame commands to MCP format"""
+        # Simple mapping for clicks, movement, etc.
+        if command_type == "left_click":
+            return {
+                "tool": "leftClick",
+                "parameters": {"duration": params.get("duration", "medium")},
+            }
+        elif command_type == "right_click":
+            return {
+                "tool": "rightClick",
+                "parameters": {"duration": params.get("duration", "medium")},
+            }
+        elif command_type == "walk":
+            return {
+                "tool": "walk",
+                "parameters": {"duration": params.get("duration", 1000)},
+            }
+        elif command_type == "setHotbarSlot":
+            return {
+                "tool": "setHotbarSlot",
+                "parameters": {"slot": params.get("slot", 0)},
+            }
+        elif command_type == "jump":
+            return {
+                "tool": "jump",
+                "parameters": {"duration": params.get("duration", "short")},
+            }
+        elif command_type == "sneak":
+            return {
+                "tool": "sneak",
+                "parameters": {"state": params.get("state", True)},
+            }
+        elif command_type == "sprint":
+            return {
+                "tool": "sprint",
+                "parameters": {"state": params.get("state", True)},
+            }
+        # Add more mappings as needed
+        return None
+
+    def handle_other_commands(self, command_type, **params):
+        """Execute non-look MCP commands directly"""
+        if self.mode == "mcp" and self.mcp_executor:
+            # Simple mapping for clicks, movement, etc.
+            mcp_command = self.convert_to_mcp_format(command_type, params)
+            if mcp_command:
+                self.execute_mcp_action(mcp_command)
 
     def draw_ui(self):
         self.screen.fill(BLACK)
@@ -475,12 +561,14 @@ class MinecraftController:
         print(f"Starting Minecraft Controller in {self.mode.upper()} mode...")
         if self.mode == "pygame":
             print("Commands will be forwarded to the Minecraft bot")
+            print(
+                "Make sure the Minecraft web client server is running on localhost:8081"
+            )
+            # Start WebSocket connection only in pygame mode
+            self.start_websocket_connection()
         else:
-            print("Commands will be sent directly to the Minecraft bot")
-        print("Make sure the Minecraft web client server is running on localhost:8081")
-
-        # Start WebSocket connection
-        self.start_websocket_connection()
+            print("Commands will be converted to MCP format and executed via callback")
+            print("No WebSocket connection needed in MCP mode")
 
         while self.running:
             for event in pygame.event.get():

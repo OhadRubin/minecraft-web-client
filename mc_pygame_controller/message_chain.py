@@ -15,119 +15,7 @@ from mc_pygame_controller import MinecraftController
 import pygame
 import threading
 import time
-
-
-async def encode_base64_content_from_url(content_url: str) -> str:
-    """Asynchronously fetch content from a URL and encode it in base64."""
-
-    async with httpx.AsyncClient() as client:
-        response = await client.get(content_url)
-        response.raise_for_status()
-        result = base64.b64encode(response.content).decode("utf-8")
-
-    return result
-
-
-async def _resolve_multimodal_args(args: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert any URL fields in tool arguments to base64-encoded strings."""
-
-    resolved = {}
-    for key, value in args.items():
-        if isinstance(value, list):
-            resolved[key] = [
-                (
-                    await encode_base64_content_from_url(v)
-                    if isinstance(v, str) and v.startswith("http")
-                    else v
-                )
-                for v in value
-            ]
-        elif isinstance(value, str) and value.startswith("http"):
-            resolved[key] = await encode_base64_content_from_url(value)
-        else:
-            resolved[key] = value
-    return resolved
-
-
-async def _encode_to_data_uri(source: str, mime_type: Optional[str] = None) -> str:
-    """Encode a local file or remote URL to a base64 data URI."""
-
-    if source.startswith("http"):
-        async with httpx.AsyncClient() as client:
-            response = await client.get(source)
-            response.raise_for_status()
-            content = response.content
-            if not mime_type:
-                mime_type = response.headers.get("content-type")
-    else:
-        with open(source, "rb") as f:
-            content = f.read()
-        if not mime_type:
-            mime_type = mimetypes.guess_type(source)[0]
-
-    mime_type = mime_type or "application/octet-stream"
-    encoded = base64.b64encode(content).decode("utf-8")
-    return f"data:{mime_type};base64,{encoded}"
-
-
-async def _resolve_multimodal_output(output: Any) -> Any:
-    """Convert MCP multimodal content to OpenAI message format."""
-
-    if isinstance(output, dict) and "content" in output:
-        # Handle MCP multimodal content structure
-        content_items = output["content"]
-
-        # If there's only text content, return just the text
-        text_items = [item for item in content_items if item.get("type") == "text"]
-        image_items = [item for item in content_items if item.get("type") == "image"]
-
-        if len(content_items) == 1 and content_items[0].get("type") == "text":
-            return content_items[0].get("text", "")
-
-        # For multimodal content, we'll return structured data that the chain can handle
-        result = []
-
-        for item in content_items:
-            if item.get("type") == "text" and item.get("text"):
-                result.append({"type": "text", "text": item["text"]})
-            elif item.get("type") == "image" and item.get("data"):
-                # Convert to OpenAI format
-                mime_type = item.get("mimeType", "image/png")
-                data_uri = f"data:{mime_type};base64,{item['data']}"
-                result.append({"type": "image_url", "image_url": {"url": data_uri}})
-
-        return {"multimodal_content": result}
-
-    elif isinstance(output, str):
-        if output.startswith("http") or os.path.exists(output):
-            return await _encode_to_data_uri(output)
-        return output
-    elif isinstance(output, list):
-        return [await _resolve_multimodal_output(v) for v in output]
-    elif isinstance(output, dict):
-        return {k: await _resolve_multimodal_output(v) for k, v in output.items()}
-    else:
-        return output
-
-
-def chain_method(func):
-    """Decorator to convert a function into a chainable method that supports
-    both synchronous and asynchronous functions."""
-
-    if inspect.iscoroutinefunction(func):
-
-        @wraps(func)
-        async def async_wrapper(self, *args, **kwargs):
-            return await func(self, *args, **kwargs)
-
-        return async_wrapper
-    else:
-
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
-            return func(self, *args, **kwargs)
-
-        return wrapper
+from .chain_utils import chain_method, encode_base64_content_from_url, _encode_to_data_uri
 
 
 @dataclass(frozen=True)
@@ -148,16 +36,39 @@ class ConversationPanel:
     def __init__(self):
         self.messages = []
 
-    def _render_messages(self):
-        """Render messages for display - currently just prints them"""
+    async def _render_messages(self, **api_params):
+        """Render messages for display - mock response for pygame/MCP mode"""
         if self.messages:
             print(f"📄 Conversation has {len(self.messages)} messages")
+
+        # Return mock response that looks like OpenAI response for compatibility
+        class MockResponse:
+            def __init__(self):
+                self.choices = [MockChoice()]
+                self.usage = MockUsage()
+
+        class MockChoice:
+            def __init__(self):
+                self.message = MockMessage()
+
+        class MockMessage:
+            def __init__(self):
+                self.content = "MCP/Pygame mode - no OpenAI call made"
+                self.tool_calls = None
+
+        class MockUsage:
+            def __init__(self):
+                self.prompt_tokens = 0
+                self.completion_tokens = 0
+                self.total_tokens = 0
+
+        return MockResponse()
 
 
 class MinecraftControllerInterface:
     """Interface adapter for MinecraftController to work with the conversation system"""
 
-    def __init__(self, servers_list, tools_list):
+    def __init__(self, servers_list, tools_list, mode="mcp"):
         self.servers_list = servers_list
         self.tools_list = tools_list
         self.tool_mapping = {}
@@ -166,6 +77,7 @@ class MinecraftControllerInterface:
         self.controller_thread = None
         self.running = False
         self.openai_client = None
+        self.mode = mode
 
     def start_controller(self):
         """Initialize pygame but don't start the controller yet (due to macOS threading restrictions)"""
@@ -202,11 +114,31 @@ class MinecraftControllerInterface:
 
         return MockResponse()
 
+    async def execute_command(self, action):
+        """Execute MCP command through existing tools_mapping"""
+        tool_name = action["tool"]
+        params = action["parameters"]
+
+        # Execute via existing tools_mapping
+        if hasattr(self, "tools_mapping") and tool_name in self.tools_mapping:
+            result = await self.tools_mapping[tool_name](**params)
+
+            # Add to conversation chain if needed
+            if hasattr(self, "chain"):
+                self.chain = self.chain.bot(content=f"Executed {tool_name}")
+        else:
+            print(f"🔧 Tool {tool_name} not found in tools_mapping")
+
     def launch_controller(self):
         """Launch the MinecraftController on the main thread"""
         try:
             pygame.init()
-            self.controller = MinecraftController()
+            self.controller = MinecraftController(mode=self.mode)
+
+            # Set controller to execute commands through our infrastructure
+            if self.mode == "mcp":
+                self.controller.set_mcp_executor(self)
+
             print("🎮 Starting Minecraft Controller...")
             print("💡 Controller window launched - use F5/F6 for trajectory recording")
             self.controller.run()
@@ -227,13 +159,10 @@ class MinecraftControllerInterface:
         print("🎮 Minecraft Controller interface cleaned up")
 
 
-# from controller import MinecraftController
-from mc_pygame_controller import MinecraftController
-
 
 @dataclass(frozen=True)
-class OpenAIAsyncMessageChain:
-    model_name: str = "gpt-4o"
+class PygameMCPAsyncMessageChain:
+    # model_name: str = "gpt-4o"
     messages: Tuple[Message] = field(default_factory=tuple)
     system_prompt: Any = None  # Changed from anthropic.NOT_GIVEN
     cache_system: bool = False
@@ -445,7 +374,6 @@ class OpenAIAsyncMessageChain:
 
             # Prepare common parameters
             api_params = {
-                "model": self.model_name,
                 "messages": msgs,
                 "max_tokens": self.max_tokens,
                 "temperature": 1.0,
@@ -455,12 +383,10 @@ class OpenAIAsyncMessageChain:
             if self.tools_list is not None:
                 api_params["tools"] = self.tools_list
 
-
             # Update interface with current messages for display
             assert self.persistent_interface is not None, "persistent_interface is not set"
             interface = self.persistent_interface
             interface.conv_panel.messages = msgs
-            
 
             # Make the actual OpenAI API call
             response = await interface.conv_panel._render_messages(**api_params)
@@ -684,7 +610,6 @@ class OpenAIAsyncMessageChain:
                 serializable_responses.append(str(response))
 
         return {
-            "model_name": self.model_name,
             "messages": serialized_messages,
             "system_prompt": (
                 self.system_prompt
@@ -700,7 +625,7 @@ class OpenAIAsyncMessageChain:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "OpenAIAsyncMessageChain":
+    def from_dict(cls, data: Dict[str, Any]) -> "PygameMCPAsyncMessageChain":
         """Deserialize from dictionary."""
         # Convert messages back to Message objects
         messages = []
@@ -716,7 +641,6 @@ class OpenAIAsyncMessageChain:
             messages.append(msg)
 
         return cls(
-            model_name=data.get("model_name", "gpt-4o"),
             messages=tuple(messages),
             system_prompt=data.get("system_prompt"),
             cache_system=data.get("cache_system", False),
@@ -735,59 +659,13 @@ class OpenAIAsyncMessageChain:
         return json.dumps(self.to_dict(), indent=2)
 
     @classmethod
-    def from_json(cls, json_str: str) -> "OpenAIAsyncMessageChain":
+    def from_json(cls, json_str: str) -> "PygameMCPAsyncMessageChain":
         """Deserialize from JSON string."""
         import json
 
         return cls.from_dict(json.loads(json_str))
 
 
-async def test_image_serialization():
-    """Test image handling with serialization."""
-    # Create initial chain with image
-    chain = OpenAIAsyncMessageChain(model_name="gpt-4o")
-    chain = await chain.user_image_file(
-        "Describe this image in detail.",
-        [
-            "/Users/ohadr/chains/a_solid_black_silhouette_of_a_a_man_and_woman_holding_hands__-shading__sky_2061071959.png"
-        ],
-    )
-
-    # Get initial description
-    chain = await chain.generate_bot()
-    print("\nInitial description:")
-    print(chain.last_response)
-
-    # Serialize the chain
-    json_str = chain.to_json()
-    print("\nSerialized chain (truncated):")
-    print(json_str[:200] + "..." if len(json_str) > 200 else json_str)
-
-    # Deserialize and ask follow-up
-    restored_chain = OpenAIAsyncMessageChain.from_json(json_str)
-    restored_chain = restored_chain.user(
-        "What is the woman holding? Answer in one word."
-    )
-    restored_chain = await restored_chain.generate_bot()
-    print("\nFollow-up answer about what she's holding:")
-    print(restored_chain.last_response)
-
-    # Ask about the type
-    restored_chain = restored_chain.user("What type is it?")
-    restored_chain = await restored_chain.generate_bot()
-    print("\nFollow-up about the type:")
-    print(restored_chain.last_response)
-
-    print("\n✅ Image serialization test completed!")
-
-
-def test_test_image_serialization_sync():
-    import asyncio
-
-    async def main():
-        await test_image_serialization()
-
-    asyncio.run(main())
 
 
 # if __name__ == "__main__":
@@ -798,9 +676,6 @@ class ChatSessionConfig:
     """Configuration for chat session."""
 
     servers: list["Server"]
-    api_key: str
-    model_name: str = "google/gemini-flash-1.5"
-    base_url: str = "https://openrouter.ai/api/v1"
     initial_message: str | None = None
     constant_msg: str | None = None
 
@@ -826,22 +701,21 @@ async def initialize_servers(servers: list[Server]) -> bool:
 
 
 async def handle_interactive_session(
-    chain: OpenAIAsyncMessageChain,
+    chain: PygameMCPAsyncMessageChain,
     servers: list = None,
     initial_message: str | None = None,
     constant_msg: str | None = None,
-) -> OpenAIAsyncMessageChain:
+) -> PygameMCPAsyncMessageChain:
 
     # Create a persistent interface that will be reused across generate() calls
     persistent_interface = MinecraftControllerInterface(
         servers or [], chain.tools_list or []
     )
-    persistent_interface.tool_mapping = chain.tools_mapping or {}
+    persistent_interface.tools_mapping = chain.tools_mapping or {}
 
     # Store reference in chain for generate() method to use
     chain = replace(chain, persistent_interface=persistent_interface)
-    print("🎮 Persistent MinecraftController created for trajectory recording")
-    print("💡 Use F7 to switch to controller mode, F5/F6 to start/stop recording")
+
 
     # Start the controller in the background
     persistent_interface.start_controller()
@@ -911,9 +785,9 @@ async def run_chat_session(config: ChatSessionConfig) -> None:
 
         # Initialize the chain
         chain = (
-            OpenAIAsyncMessageChain(
-                model_name=config.model_name,
-                base_url=config.base_url,
+            PygameMCPAsyncMessageChain(
+                # model_name=config.model_name,
+                # base_url=config.base_url,
                 verbose=True,
             )
             .with_tools(tool_schemas, tool_mapping)
@@ -947,20 +821,8 @@ async def main() -> None:
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="MCP Client with OpenAI Message Chain")
     parser.add_argument(
-        "--model",
-        # default="google/gemini-flash-1.5",
-        default="gpt-4.1-nano",
-        help="Model name to use (default: google/gemini-flash-1.5)",
-    )
-    parser.add_argument(
-        "--base-url",
-        # default="https://openrouter.ai/api/v1",
-        default=None,
-        help="API base URL (default: https://openrouter.ai/api/v1)",
-    )
-    parser.add_argument(
         "--msg",
-        default=None,
+        default="controller",
         help="An optional first message to send to the assistant",
     )
     parser.add_argument(
@@ -1002,9 +864,9 @@ async def main() -> None:
 
     chat_config = ChatSessionConfig(
         servers=servers,
-        api_key=config.llm_api_key,
-        model_name=args.model,
-        base_url=args.base_url,
+        # api_key=config.llm_api_key,
+        # model_name=args.model,
+        # base_url=args.base_url,
         initial_message=args.msg,
         constant_msg=args.constant_msg,
     )
