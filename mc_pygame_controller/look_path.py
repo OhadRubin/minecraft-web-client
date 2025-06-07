@@ -6,7 +6,8 @@ from typing import Optional, Tuple, List, Dict
 from .constants import *
 
 class LookPathTracker:
-    def __init__(self, inactivity_timeout_ms=2000):
+
+    def __init__(self, inactivity_timeout_ms=2000, sensitivity=5.0):
         self.movements: List[Dict] = []
         self.positions: List[Dict] = []
         self.max_history = 1000  # Limit history to prevent memory issues
@@ -14,6 +15,7 @@ class LookPathTracker:
         self.last_movement_time = None
         self.current_stats = None  # Store latest angle analysis
         self.execution_callback = None  # Callback for MCP command execution
+        self.sensitivity = sensitivity  # Pixels per degree for MCP conversion
 
         # Mouse-based segmentation
         self.mouse_tracking_active = False  # Track if mouse is currently pressed in camera area
@@ -214,9 +216,11 @@ class LookPathTracker:
             ):
                 total_x, total_y = self.current_stats["total_displacement"]
 
-                # Convert pixels to degrees (MCP server uses 5px = 1 degree)
-                x_angle = total_x / 5.0
-                y_angle = total_y / 5.0
+                # Convert pixels to degrees using configurable sensitivity
+                x_angle = total_x / self.sensitivity
+                y_angle = -(
+                    total_y / self.sensitivity
+                )  # Invert Y axis for natural camera control
 
                 # Only execute meaningful movements (filter noise)
                 if abs(x_angle) > 0.2 or abs(y_angle) > 0.2:

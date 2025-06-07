@@ -17,15 +17,16 @@ import argparse
 
 class MinecraftController:
 
-    def __init__(self, mode="pygame", chain_args=None):
+    def __init__(self, mode="pygame", chain_args=None, sensitivity=5.0):
         self.mode = mode  # "pygame" or "mcp"
+        self.sensitivity = sensitivity  # Mouse sensitivity for MCP mode
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Minecraft Web Client Controller")
         self.clock = pygame.time.Clock()
         self.running = True
 
         # Look path tracking
-        self.look_path_tracker = LookPathTracker()
+        self.look_path_tracker = LookPathTracker(sensitivity=sensitivity)
         self.look_visualization = LookPathVisualizationArea(
             1230, 50, 350, 300
         )  # Right side visualization
@@ -1204,6 +1205,7 @@ async def handle_interactive_session(
     servers: list = None,
     initial_message: str | None = None,
     constant_msg: str | None = None,
+    sensitivity: float = 5.0,
 ) -> PygameMCPAsyncMessageChain:
     """Run pygame controller with MCP integration using asyncio pattern"""
 
@@ -1223,8 +1225,11 @@ async def handle_interactive_session(
     # Set interface as persistent interface for the chain
     chain = replace(chain, persistent_interface=interface)
 
-    # Create controller
-    controller = MinecraftController(mode="mcp", chain_args=(servers, chain))
+    # Create controller with sensitivity
+    print(f"🎮 MCP mode sensitivity: {sensitivity} pixels per degree")
+    controller = MinecraftController(
+        mode="mcp", chain_args=(servers, chain), sensitivity=sensitivity
+    )
 
     # Connect controller to interface for command capture
     interface.set_controller(controller)
@@ -1261,11 +1266,12 @@ async def handle_interactive_session(
     return chain
 
 
-async def run_chat_session(config: ChatSessionConfig) -> None:
+async def run_chat_session(config: ChatSessionConfig, sensitivity: float = 5.0) -> None:
     """Main chat session handler using functional paradigm.
 
     Args:
         config: Chat session configuration
+        sensitivity: Mouse sensitivity for MCP mode
     """
     try:
         # Initialize servers
@@ -1298,7 +1304,11 @@ Don't call multiple tools at once.
 
         # Handle interactive session with optional initial message
         chain = await handle_interactive_session(
-            chain, config.servers, config.initial_message, config.constant_msg
+            chain,
+            config.servers,
+            config.initial_message,
+            config.constant_msg,
+            sensitivity,
         )
 
     finally:
@@ -1313,6 +1323,12 @@ if __name__ == "__main__":
         "--mcp",
         action="store_true",
         help="Run in MCP mode (commands sent directly to bot) instead of pygame mode (commands forwarded to bot)",
+    )
+    parser.add_argument(
+        "--sensitivity",
+        type=float,
+        default=5.0,
+        help="Mouse sensitivity for MCP mode (pixels per degree, default: 5.0). Lower = more sensitive",
     )
     args = parser.parse_args()
 
@@ -1364,6 +1380,6 @@ if __name__ == "__main__":
                 constant_msg=None,
             )
 
-            await run_chat_session(chat_config)
+            await run_chat_session(chat_config, args.sensitivity)
 
         asyncio.run(runner())
