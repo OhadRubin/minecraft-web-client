@@ -1,5 +1,6 @@
 import { onCameraMove } from './cameraRotationControls'
 import { moveWsCursorBy, emitWsMousemove, wsCursorState } from './react/WsCursor'
+import { togglePlayerInventory } from './inventoryWindows'
 import html2canvas from 'html2canvas'
 import * as THREE from 'three'
 
@@ -45,6 +46,7 @@ export interface MouseCommand {
   | 'getScreenshot'
   | 'getBotStatus'
   | 'annotate_3d_position'
+  | 'inventory'
   control?: string
   state?: boolean
   message?: string
@@ -550,6 +552,17 @@ class TouchEvaluator {
           }
         } catch (error) {
           console.error('[WsCommandClient] Error getting bot status:', error)
+        }
+        break
+      case 'inventory':
+        try {
+          console.log('[WsCommandClient] Toggling player inventory')
+          // Exit pointer lock and toggle player inventory, same as controls.ts
+          document.exitPointerLock?.()
+          togglePlayerInventory()
+          console.log('[WsCommandClient] Successfully toggled player inventory')
+        } catch (error) {
+          console.error('[WsCommandClient] Error toggling inventory:', error)
         }
         break
     }

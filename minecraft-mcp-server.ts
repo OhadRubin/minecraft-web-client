@@ -536,6 +536,29 @@ server.addTool({
     },
 });
 
+server.addTool({
+    name: "toggleInventory",
+    description: "Toggle the player inventory interface (open if closed, close if open)",
+    parameters: z.object({}),
+    execute: async () => {
+        await sendCommand({ type: "inventory" });
+        const screenshotResponse = await captureScreenshot();
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: `Toggled player inventory\n\nCurrent Status:\n${screenshotResponse.status}`,
+                },
+                {
+                    type: "image",
+                    data: screenshotResponse.image,
+                    mimeType: "image/png",
+                },
+            ],
+        };
+    },
+});
+
 
 // Start the server
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4000;

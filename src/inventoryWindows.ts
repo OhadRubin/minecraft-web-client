@@ -552,6 +552,19 @@ export const openPlayerInventory = () => {
   openWindow(undefined)
 }
 
+export const togglePlayerInventory = () => {
+  // Check if inventory is already open by looking for player_win modal
+  const inventoryOpen = activeModalStack.some(modal => modal.reactType?.startsWith('player_win:') && modal.reactType === 'player_win:undefined')
+
+  if (inventoryOpen) {
+    // Close inventory
+    hideCurrentModal()
+  } else {
+    // Open inventory
+    openPlayerInventory()
+  }
+}
+
 const getResultingRecipe = (slots: Array<Item | null>, gridRows: number) => {
   const inputSlotsItems = slots.map(blockSlot => blockSlot?.type)
   let currentShape = splitEvery(gridRows, inputSlotsItems as Array<number | undefined | null>)

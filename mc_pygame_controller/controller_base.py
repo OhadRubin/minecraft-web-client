@@ -167,7 +167,7 @@ class MinecraftController:
             "Sprint",
             PURPLE,
         )
-        self.inventory_btn = Button(
+        self.inventory_btn = ToggleButton(
             start_x + 90,
             start_y + spacing * 2,
             button_width,
@@ -526,18 +526,15 @@ class MinecraftController:
         self.send_command_sync(command)
 
     def handle_inventory(self):
-        # Send 'e' key command for inventory
+        # Send inventory command (toggle)
         if self.mode == "pygame":
-            command = {"type": "control", "control": "inventory", "state": True}
-            self.send_command_sync(command)
-            # Immediately release
-            command = {"type": "control", "control": "inventory", "state": False}
+            command = {"type": "inventory"}
             self.send_command_sync(command)
 
-            self._log_mcp_command("openInventory", {})
+            self._log_mcp_command("toggleInventory", {})
 
         else:  # mcp mode
-            self.handle_other_commands("openInventory")
+            self.handle_other_commands("toggleInventory")
 
     def handle_hotbar_slot(self, slot: int):
         """Handle hotbar slot selection (slot should be 0-8)"""
@@ -636,9 +633,9 @@ class MinecraftController:
                 "tool": "sprint",
                 "parameters": {"state": params.get("state", True)},
             }
-        elif command_type == "openInventory":
+        elif command_type == "toggleInventory":
             return {
-                "tool": "openInventory",
+                "tool": "toggleInventory",
                 "parameters": {},
             }
         elif command_type == "dropItem":
