@@ -101,13 +101,12 @@ class TouchEvaluator {
         break
       case 'leftDown':
         try {
-          console.log('[WsCommandClient] Executing leftDown command')
+          console.log('[WsCommandClient] Executing leftDown command (UI interaction)')
 
-          // If we're using gamepad input (in inventory/UI), click at cursor position
-          if (miscUiState.usingGamepadInput && wsCursorState.usingWsInput) {
+          // UI interaction with cursor positioning
+          if (wsCursorState.usingWsInput) {
             const x = (wsCursorState.x / 100) * window.innerWidth
             const y = (wsCursorState.y / 100) * window.innerHeight
-
             const event = new MouseEvent('mousedown', {
               bubbles: true,
               cancelable: true,
@@ -116,20 +115,15 @@ class TouchEvaluator {
               button: 0,
               buttons: 1
             })
-
             const elementAtCursor = document.elementFromPoint(x, y)
             if (elementAtCursor) {
               elementAtCursor.dispatchEvent(event)
-              console.log(`[WsCommandClient] Left clicked at cursor position (${x}, ${y})`)
+              console.log(`[WsCommandClient] Left clicked at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+            } else {
+              console.log('[WsCommandClient] No element found at cursor position')
             }
           } else {
-          // Fallback to direct bot command for game world interaction
-            if (typeof this.bot.leftClickStart === 'function') {
-              this.bot.leftClickStart()
-              console.log('[WsCommandClient] leftClickStart executed successfully')
-            } else {
-              console.error('[WsCommandClient] leftClickStart is not a function:', typeof this.bot.leftClickStart)
-            }
+            console.log('[WsCommandClient] WebSocket input not active, ignoring leftDown')
           }
         } catch (error) {
           console.error('[WsCommandClient] Error in leftDown:', error)
@@ -137,13 +131,12 @@ class TouchEvaluator {
         break
       case 'leftUp':
         try {
-          console.log('[WsCommandClient] Executing leftUp command')
+          console.log('[WsCommandClient] Executing leftUp command (UI interaction)')
 
-          // If we're using gamepad input (in inventory/UI), click at cursor position
-          if (miscUiState.usingGamepadInput && wsCursorState.usingWsInput) {
+          // UI interaction with cursor positioning
+          if (wsCursorState.usingWsInput) {
             const x = (wsCursorState.x / 100) * window.innerWidth
             const y = (wsCursorState.y / 100) * window.innerHeight
-
             const event = new MouseEvent('mouseup', {
               bubbles: true,
               cancelable: true,
@@ -152,20 +145,15 @@ class TouchEvaluator {
               button: 0,
               buttons: 0
             })
-
             const elementAtCursor = document.elementFromPoint(x, y)
             if (elementAtCursor) {
               elementAtCursor.dispatchEvent(event)
-              console.log(`[WsCommandClient] Left click released at cursor position (${x}, ${y})`)
+              console.log(`[WsCommandClient] Left click released at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+            } else {
+              console.log('[WsCommandClient] No element found at cursor position')
             }
           } else {
-          // Fallback to direct bot command for game world interaction
-            if (typeof this.bot.leftClickEnd === 'function') {
-              this.bot.leftClickEnd()
-              console.log('[WsCommandClient] leftClickEnd executed successfully')
-            } else {
-              console.error('[WsCommandClient] leftClickEnd is not a function:', typeof this.bot.leftClickEnd)
-            }
+            console.log('[WsCommandClient] WebSocket input not active, ignoring leftUp')
           }
         } catch (error) {
           console.error('[WsCommandClient] Error in leftUp:', error)
@@ -173,13 +161,12 @@ class TouchEvaluator {
         break
       case 'rightDown':
         try {
-          console.log('[WsCommandClient] Executing rightDown command')
+          console.log('[WsCommandClient] Executing rightDown command (UI interaction)')
 
-          // If we're using gamepad input (in inventory/UI), click at cursor position
-          if (miscUiState.usingGamepadInput && wsCursorState.usingWsInput) {
+          // UI interaction with cursor positioning
+          if (wsCursorState.usingWsInput) {
             const x = (wsCursorState.x / 100) * window.innerWidth
             const y = (wsCursorState.y / 100) * window.innerHeight
-
             const event = new MouseEvent('mousedown', {
               bubbles: true,
               cancelable: true,
@@ -188,20 +175,15 @@ class TouchEvaluator {
               button: 2,
               buttons: 2
             })
-
             const elementAtCursor = document.elementFromPoint(x, y)
             if (elementAtCursor) {
               elementAtCursor.dispatchEvent(event)
-              console.log(`[WsCommandClient] Right clicked at cursor position (${x}, ${y})`)
+              console.log(`[WsCommandClient] Right clicked at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+            } else {
+              console.log('[WsCommandClient] No element found at cursor position')
             }
           } else {
-          // Fallback to direct bot command for game world interaction
-            if (typeof this.bot.rightClickStart === 'function') {
-              this.bot.rightClickStart()
-              console.log('[WsCommandClient] rightClickStart executed successfully')
-            } else {
-              console.error('[WsCommandClient] rightClickStart is not a function:', typeof this.bot.rightClickStart)
-            }
+            console.log('[WsCommandClient] WebSocket input not active, ignoring rightDown')
           }
         } catch (error) {
           console.error('[WsCommandClient] Error in rightDown:', error)
@@ -209,13 +191,12 @@ class TouchEvaluator {
         break
       case 'rightUp':
         try {
-          console.log('[WsCommandClient] Executing rightUp command')
+          console.log('[WsCommandClient] Executing rightUp command (UI interaction)')
 
-          // If we're using gamepad input (in inventory/UI), click at cursor position
-          if (miscUiState.usingGamepadInput && wsCursorState.usingWsInput) {
+          // UI interaction with cursor positioning
+          if (wsCursorState.usingWsInput) {
             const x = (wsCursorState.x / 100) * window.innerWidth
             const y = (wsCursorState.y / 100) * window.innerHeight
-
             const event = new MouseEvent('mouseup', {
               bubbles: true,
               cancelable: true,
@@ -224,20 +205,15 @@ class TouchEvaluator {
               button: 2,
               buttons: 0
             })
-
             const elementAtCursor = document.elementFromPoint(x, y)
             if (elementAtCursor) {
               elementAtCursor.dispatchEvent(event)
-              console.log(`[WsCommandClient] Right click released at cursor position (${x}, ${y})`)
+              console.log(`[WsCommandClient] Right click released at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+            } else {
+              console.log('[WsCommandClient] No element found at cursor position')
             }
           } else {
-          // Fallback to direct bot command for game world interaction
-            if (typeof this.bot.rightClickEnd === 'function') {
-              this.bot.rightClickEnd()
-              console.log('[WsCommandClient] rightClickEnd executed successfully')
-            } else {
-              console.error('[WsCommandClient] rightClickEnd is not a function:', typeof this.bot.rightClickEnd)
-            }
+            console.log('[WsCommandClient] WebSocket input not active, ignoring rightUp')
           }
         } catch (error) {
           console.error('[WsCommandClient] Error in rightUp:', error)
@@ -351,6 +327,7 @@ class TouchEvaluator {
           const buttonKey = cmd.button!
 
           if (cmd.action === 'down') {
+            // TODO: add a trigger right/left down according to the button key
             // Only start if not already active (prevent duplicate starts)
             if (!this.activeButtons.has(buttonKey)) {
               this.activeButtons.add(buttonKey)
@@ -383,6 +360,7 @@ class TouchEvaluator {
               console.log(`[WsCommandClient] Button ${cmd.button} already active, ignoring duplicate down`)
             }
           } else if (cmd.action === 'up') {
+            // TODO: add a trigger right/left down according to the button key
             // Only stop if currently active
             if (this.activeButtons.has(buttonKey)) {
               this.activeButtons.delete(buttonKey)

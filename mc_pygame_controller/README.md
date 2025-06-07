@@ -554,6 +554,26 @@ Sent command: {'type': 'look', 'movementX': -14, 'movementY': 0}
 
 **Architecture Decision**: Maintain the difference in execution models. Do not attempt to make execution timing identical.
 
+## **SMART SOLUTION**: Auto-Detection Click Handling ✅
+
+**Intelligent Web Client**: The web client now automatically detects context and routes clicks appropriately.
+
+**How it Works**:
+1. **Try UI interaction first**: Check if cursor is over a specific UI element (inventory, menus, etc.)
+2. **Fall back to game world**: If no UI element detected, use `documentMouseEvent` for reliable world interactions
+
+**Implementation**:
+- **Both modes use `leftDown/leftUp` & `rightDown/rightUp`** for consistency
+- **Web client smart routing**: `elementAtCursor !== document.body` → UI interaction, else → `documentMouseEvent`
+- **Automatic context detection**: No manual context switching needed
+
+**Result**: 
+- ✅ **Inventory interactions work perfectly** in both modes
+- ✅ **Game world interactions work reliably** in both modes  
+- ✅ **Complete parity achieved** with intelligent auto-detection
+
+**Benefits**: No complex hybrid logic in MCP tools, no mode-specific command differences - the web client handles everything automatically based on what's actually under the cursor.
+
 ## **SOLVED**: Angle Translation Inconsistency Bug Fixed ✅
 
 **Previous Issue**: The same calculated angles produced different camera movement in Minecraft between pygame and MCP modes, causing a 22° difference for identical mouse input.

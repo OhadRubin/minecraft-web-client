@@ -31,6 +31,38 @@ Make sure the Minecraft client is running and the WebSocket server is available 
 let ws: WebSocket | null = null;
 let connectionPromise: Promise<void> | null = null;
 
+// Game state management - tracks context for smart command routing
+let gameState = {
+    inventoryOpen: false,
+    currentContext: "world" as "inventory" | "world",
+    lastScreenshot: null as any,
+    botStatus: null as any
+};
+
+// Enhanced state detection and management
+async function updateGameState() {
+    try {
+        const status = await requestBotStatus();
+        gameState.botStatus = status;
+
+        // Auto-detect if inventory is open based on game state
+        // This could be enhanced with actual inventory detection
+        // For now, rely on manual tracking via toggleInventory
+    } catch (error) {
+        console.error("Failed to update game state:", error);
+    }
+}
+
+// Reset state for new connections
+function resetGameState() {
+    gameState = {
+        inventoryOpen: false,
+        currentContext: "world",
+        lastScreenshot: null,
+        botStatus: null
+    };
+}
+
 // Configuration constants
 const WEBSOCKET_URL = process.env.MINECRAFT_WS_URL || "ws://localhost:8081";
 const CONNECTION_TIMEOUT = parseInt(process.env.CONNECTION_TIMEOUT || "50000"); // Increased to 15 seconds
@@ -227,12 +259,14 @@ async function requestBotStatus(): Promise<any> {
             }
         };
 
-        ws.on('message', handleMessage);
-        setTimeout(() => {
-            if (ws) {
-                ws.send(JSON.stringify({ type: 'getBotStatus' }));
-            }
-        }, 100);
+        if (ws) {
+            ws.on('message', handleMessage);
+            setTimeout(() => {
+                if (ws) {
+                    ws.send(JSON.stringify({ type: 'getBotStatus' }));
+                }
+            }, 100);
+        }
     });
 }
 
@@ -404,7 +438,7 @@ server.addTool({
 
 server.addTool({
     name: "rightClick",
-    description: "Hold right click for a specified duration (useful for actions like eating or using a shield)",
+    description: "Context-aware right click (inventory or game world)",
     parameters: z.object({
         duration: z.enum(["very_short","short", "medium", "long", "very_long","very_very_long"]).optional().default("medium").describe("Duration to hold: very_short (100ms), short (500ms), medium (1000ms), long (2000ms), very_long (5000ms), very_very_long (10000ms)"),
     }),
@@ -418,27 +452,34 @@ server.addTool({
             "very_very_long": 10000,
         }[args.duration];
 
-        // Use documentMouseEvent commands (same as working pygame implementation)
-        await sendCommand({
-            type: "documentMouseEvent",
-            button: 2,
-            action: "down",
-            updateMouse: true
-        });
-        await new Promise(resolve => setTimeout(resolve, durationMs));
-        await sendCommand({
-            type: "documentMouseEvent",
-            button: 2,
-            action: "up",
-            updateMouse: false
-        });
+        if (gameState.currentContext === "inventory") {
+            // Use UI commands for inventory interactions
+            await sendCommand({ type: "rightDown" });
+            await new Promise(resolve => setTimeout(resolve, durationMs));
+            await sendCommand({ type: "rightUp" });
+        } else {
+            // Use documentMouseEvent for game world interactions
+            await sendCommand({
+                type: "documentMouseEvent",
+                button: 2,
+                action: "down",
+                updateMouse: true
+            });
+            await new Promise(resolve => setTimeout(resolve, durationMs));
+            await sendCommand({
+                type: "documentMouseEvent",
+                button: 2,
+                action: "up",
+                updateMouse: false
+            });
+        }
 
         const screenshotResponse = await captureScreenshot();
         return {
             content: [
                 {
                     type: "text",
-                    text: `Right clicked and held for ${args.duration} (${durationMs}ms)\n\nCurrent Status:\n${screenshotResponse.status}`,
+                    text: `Right clicked in ${gameState.currentContext} for ${args.duration} (${durationMs}ms)\n\nCurrent Status:\n${screenshotResponse.status}`,
                 },
                 {
                     type: "image",
@@ -452,7 +493,7 @@ server.addTool({
 
 server.addTool({
     name: "leftClick",
-    description: "Hold left click for a specified duration (useful for actions like breaking blocks or attacking)",
+    description: "Context-aware left click (inventory or game world)",
     parameters: z.object({
         duration: z.enum(["very_short","short", "medium", "long", "very_long","very_very_long"]).optional().default("medium").describe("Duration to hold: very_short (100ms), short (500ms), medium (1000ms), long (2000ms), very_long (5000ms), very_very_long (10000ms)"),
     }),
@@ -466,27 +507,34 @@ server.addTool({
             "very_very_long": 10000,
         }[args.duration];
 
-        // Use documentMouseEvent commands (same as working pygame implementation)
-        await sendCommand({
-            type: "documentMouseEvent",
-            button: 0,
-            action: "down",
-            updateMouse: true
-        });
-        await new Promise(resolve => setTimeout(resolve, durationMs));
-        await sendCommand({
-            type: "documentMouseEvent",
-            button: 0,
-            action: "up",
-            updateMouse: false
-        });
+        if (gameState.currentContext === "inventory") {
+            // Use UI commands for inventory interactions
+            await sendCommand({ type: "leftDown" });
+            await new Promise(resolve => setTimeout(resolve, durationMs));
+            await sendCommand({ type: "leftUp" });
+        } else {
+            // Use documentMouseEvent for game world interactions
+            await sendCommand({
+                type: "documentMouseEvent",
+                button: 0,
+                action: "down",
+                updateMouse: true
+            });
+            await new Promise(resolve => setTimeout(resolve, durationMs));
+            await sendCommand({
+                type: "documentMouseEvent",
+                button: 0,
+                action: "up",
+                updateMouse: false
+            });
+        }
 
         const screenshotResponse = await captureScreenshot();
         return {
             content: [
                 {
                     type: "text",
-                    text: `Left clicked and held for ${args.duration} (${durationMs}ms)\n\nCurrent Status:\n${screenshotResponse.status}`,
+                    text: `Left clicked in ${gameState.currentContext} for ${args.duration} (${durationMs}ms)\n\nCurrent Status:\n${screenshotResponse.status}`,
                 },
                 {
                     type: "image",
@@ -541,13 +589,19 @@ server.addTool({
     description: "Toggle the player inventory interface (open if closed, close if open)",
     parameters: z.object({}),
     execute: async () => {
+        // Update state before sending command
+        gameState.inventoryOpen = !gameState.inventoryOpen;
+        gameState.currentContext = gameState.inventoryOpen ? "inventory" : "world";
+
         await sendCommand({ type: "inventory" });
         const screenshotResponse = await captureScreenshot();
+        gameState.lastScreenshot = screenshotResponse;
+
         return {
             content: [
                 {
                     type: "text",
-                    text: `Toggled player inventory\n\nCurrent Status:\n${screenshotResponse.status}`,
+                    text: `Inventory ${gameState.inventoryOpen ? 'opened' : 'closed'} (context: ${gameState.currentContext})\n\nCurrent Status:\n${screenshotResponse.status}`,
                 },
                 {
                     type: "image",
@@ -559,6 +613,61 @@ server.addTool({
     },
 });
 
+// Debug tool for explicit context control
+server.addTool({
+    name: "setContext",
+    description: "Manually set the interaction context (for debugging and testing)",
+    parameters: z.object({
+        context: z.enum(["inventory", "world"]).describe("The context to set: 'inventory' for UI interactions, 'world' for game world interactions")
+    }),
+    execute: async (args) => {
+        const previousContext = gameState.currentContext;
+        gameState.currentContext = args.context;
+        gameState.inventoryOpen = args.context === "inventory";
+
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: `Context changed from '${previousContext}' to '${args.context}'\nInventory state: ${gameState.inventoryOpen ? 'open' : 'closed'}`,
+                },
+            ],
+        };
+    },
+});
+
+// Debug tool to check current state
+server.addTool({
+    name: "getContext",
+    description: "Get the current interaction context and game state",
+    parameters: z.object({}),
+    execute: async () => {
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: `Current context: ${gameState.currentContext}\nInventory open: ${gameState.inventoryOpen}\nLast screenshot: ${gameState.lastScreenshot ? 'available' : 'none'}`,
+                },
+            ],
+        };
+    },
+});
+
+// Add session management
+server.on("connect", (event) => {
+    console.log("Client connected - resetting game state");
+    resetGameState();
+});
+
+server.on("disconnect", (event) => {
+    console.log("Client disconnected");
+    // Cleanup WebSocket connection if needed
+    if (ws) {
+        ws.close();
+        ws = null;
+        connectionPromise = null;
+    }
+});
 
 // Start the server
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4000;

@@ -834,7 +834,7 @@ addEventListener('mousedown', async (e) => {
   }
 
   if ((e.target as HTMLElement).matches?.('#VRButton')) return
-  if (!isInRealGameSession() && !(e.target as HTMLElement).id.includes('ui-root')) return
+  if (!isInRealGameSession() && !((e.target as HTMLElement).id?.includes('ui-root') ?? false)) return
   void pointerLock.requestPointerLock()
   if (!bot) return
   getThreeJsRendererMethods()?.onPageInteraction()
