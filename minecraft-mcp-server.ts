@@ -378,6 +378,29 @@ server.addTool({
     },
 });
 
+server.addTool({
+    name: "annotate_3d_position",
+    description: "Place a colored marker at the given world coordinates",
+    parameters: z.object({
+        x: z.number().finite(),
+        y: z.number().finite(),
+        z: z.number().finite(),
+        label: z.string().max(100).optional().default(""),
+        color: z.string().optional().default("red"),
+    }),
+    execute: async (args) => {
+        const command: MinecraftCommand = {
+            type: "annotate_3d_position",
+            worldX: args.x,
+            worldY: args.y,
+            worldZ: args.z,
+            label: args.label,
+            color: args.color,
+        };
+        return await sendCommandWithScreenshot(command, `Added marker at (${args.x}, ${args.y}, ${args.z})`);
+    },
+});
+
 
 // Screenshot tool
 server.addTool({

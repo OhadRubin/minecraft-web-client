@@ -1,6 +1,7 @@
 import { onCameraMove } from './cameraRotationControls'
 import { moveWsCursorBy, emitWsMousemove, wsCursorState } from './react/WsCursor'
 import html2canvas from 'html2canvas'
+import * as THREE from 'three'
 
 export interface MouseCommand {
   type:
@@ -20,6 +21,7 @@ export interface MouseCommand {
   | 'dropItem'
   | 'swapHands'
   | 'cursor'
+  | 'annotate_3d_position'
   | 'getScreenshot'
   | 'getBotStatus'
   control?: string
@@ -44,6 +46,35 @@ export interface MouseCommand {
   direction?: 1 | -1
   // dropItem fields
   amount?: number
+  // annotate_3d_position fields
+  worldX?: number
+  worldY?: number
+  worldZ?: number
+  label?: string
+  color?: string
+}
+
+function createTextSprite (text: string): THREE.Sprite {
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')!
+  const font = '20px Arial'
+  ctx.font = font
+  const padding = 4
+  const metrics = ctx.measureText(text)
+  canvas.width = metrics.width + padding * 2
+  canvas.height = 24 + padding * 2
+  ctx.font = font
+  ctx.fillStyle = 'white'
+  ctx.strokeStyle = 'black'
+  ctx.lineWidth = 4
+  ctx.strokeText(text, padding, canvas.height - padding)
+  ctx.fillText(text, padding, canvas.height - padding)
+  const texture = new THREE.CanvasTexture(canvas)
+  const material = new THREE.SpriteMaterial({ map: texture, transparent: true })
+  const sprite = new THREE.Sprite(material)
+  const scale = 0.02 * canvas.width
+  sprite.scale.set(scale, scale, 1)
+  return sprite
 }
 
 class TouchEvaluator {
@@ -376,6 +407,34 @@ class TouchEvaluator {
           console.error('[WsCommandClient] Error moving cursor:', error)
         }
         break
+      case 'annotate_3d_position': {
+        try {
+          const scene: THREE.Scene | undefined = (window as any).world?.scene
+          if (!scene) {
+            console.error('[WsCommandClient] Scene not found for annotation')
+            break
+          }
+          const { worldX, worldY, worldZ, label, color } = cmd
+          const geometry = new THREE.SphereGeometry(0.5, 12, 8)
+          const material = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(color || 'red'),
+            transparent: true,
+            opacity: 0.8
+          })
+          const marker = new THREE.Mesh(geometry, material)
+          marker.position.set(worldX ?? 0, worldY ?? 0, worldZ ?? 0)
+          ;(marker as any).isAnnotationMarker = true
+          if (label) {
+            const sprite = createTextSprite(label)
+            sprite.position.set(0, 1, 0)
+            marker.add(sprite)
+          }
+          scene.add(marker)
+        } catch (error) {
+          console.error('[WsCommandClient] Error in annotate_3d_position:', error)
+        }
+        break
+      }
       case 'getScreenshot':
         try {
           console.log('[WsCommandClient] Capturing full page screenshot including UI elements')
