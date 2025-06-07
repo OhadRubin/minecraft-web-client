@@ -1,3 +1,4 @@
+
 node_modules/
 package-lock.json
 .vscode
@@ -21,3 +22,12 @@ server-jar
 config.local.json
 .history
 src/react/npmReactComponents.ts
+
+# Python cache directories
+__pycache__/
+**/__pycache__/
+
+# Untracked directories
+VisualSketchpad/
+chains
+trajectories/
