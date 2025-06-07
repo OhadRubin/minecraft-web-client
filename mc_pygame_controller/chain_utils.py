@@ -10,8 +10,7 @@ import mimetypes
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 import asyncio
-from .mcp_server import Server, create_tool_functions, Configuration
-
+from .mcp_client import Server, create_tool_functions, Configuration
 
 
 def chain_method(func):
@@ -23,7 +22,6 @@ def chain_method(func):
             return self
         return result
     return wrapper
-
 
 
 async def encode_base64_content_from_url(content_url: str) -> str:

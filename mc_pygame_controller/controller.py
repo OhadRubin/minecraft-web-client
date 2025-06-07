@@ -13,7 +13,7 @@ from openai import AsyncOpenAI
 from pydantic import BaseModel
 import asyncio
 import argparse
-from .mcp_server import Server, create_tool_functions, Configuration
+from .mcp_client import Server, create_tool_functions, Configuration
 import pygame
 import threading
 import time
@@ -238,7 +238,7 @@ if __name__ == "__main__":
                             "command": "npx",
                             "args": [
                                 "tsx",
-                                "/Users/ohadr/scrape_lm_copy/minecraft-web-client/minecraft-mcp-server.ts",
+                                "/Users/ohadr/minecraft-web-client/minecraft-mcp-server.ts",
                                 "--transport",
                                 "stdio",
                             ],
