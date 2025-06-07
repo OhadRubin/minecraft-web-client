@@ -1,6 +1,7 @@
 import { onCameraMove } from './cameraRotationControls'
 import { moveWsCursorBy, emitWsMousemove, wsCursorState } from './react/WsCursor'
 import { togglePlayerInventory } from './inventoryWindows'
+import { miscUiState } from './globalState'
 import html2canvas from 'html2canvas'
 import * as THREE from 'three'
 
@@ -92,6 +93,7 @@ class TouchEvaluator {
   async execute (cmd: MouseCommand) {
     // Enable WebSocket input mode when any command is received
     wsCursorState.usingWsInput = true
+    miscUiState.usingGamepadInput = true
 
     switch (cmd.type) {
       case 'control':
@@ -100,11 +102,34 @@ class TouchEvaluator {
       case 'leftDown':
         try {
           console.log('[WsCommandClient] Executing leftDown command')
-          if (typeof this.bot.leftClickStart === 'function') {
-            this.bot.leftClickStart()
-            console.log('[WsCommandClient] leftClickStart executed successfully')
+
+          // If we're using gamepad input (in inventory/UI), click at cursor position
+          if (miscUiState.usingGamepadInput && wsCursorState.usingWsInput) {
+            const x = (wsCursorState.x / 100) * window.innerWidth
+            const y = (wsCursorState.y / 100) * window.innerHeight
+
+            const event = new MouseEvent('mousedown', {
+              bubbles: true,
+              cancelable: true,
+              clientX: x,
+              clientY: y,
+              button: 0,
+              buttons: 1
+            })
+
+            const elementAtCursor = document.elementFromPoint(x, y)
+            if (elementAtCursor) {
+              elementAtCursor.dispatchEvent(event)
+              console.log(`[WsCommandClient] Left clicked at cursor position (${x}, ${y})`)
+            }
           } else {
-            console.error('[WsCommandClient] leftClickStart is not a function:', typeof this.bot.leftClickStart)
+          // Fallback to direct bot command for game world interaction
+            if (typeof this.bot.leftClickStart === 'function') {
+              this.bot.leftClickStart()
+              console.log('[WsCommandClient] leftClickStart executed successfully')
+            } else {
+              console.error('[WsCommandClient] leftClickStart is not a function:', typeof this.bot.leftClickStart)
+            }
           }
         } catch (error) {
           console.error('[WsCommandClient] Error in leftDown:', error)
@@ -113,11 +138,34 @@ class TouchEvaluator {
       case 'leftUp':
         try {
           console.log('[WsCommandClient] Executing leftUp command')
-          if (typeof this.bot.leftClickEnd === 'function') {
-            this.bot.leftClickEnd()
-            console.log('[WsCommandClient] leftClickEnd executed successfully')
+
+          // If we're using gamepad input (in inventory/UI), click at cursor position
+          if (miscUiState.usingGamepadInput && wsCursorState.usingWsInput) {
+            const x = (wsCursorState.x / 100) * window.innerWidth
+            const y = (wsCursorState.y / 100) * window.innerHeight
+
+            const event = new MouseEvent('mouseup', {
+              bubbles: true,
+              cancelable: true,
+              clientX: x,
+              clientY: y,
+              button: 0,
+              buttons: 0
+            })
+
+            const elementAtCursor = document.elementFromPoint(x, y)
+            if (elementAtCursor) {
+              elementAtCursor.dispatchEvent(event)
+              console.log(`[WsCommandClient] Left click released at cursor position (${x}, ${y})`)
+            }
           } else {
-            console.error('[WsCommandClient] leftClickEnd is not a function:', typeof this.bot.leftClickEnd)
+          // Fallback to direct bot command for game world interaction
+            if (typeof this.bot.leftClickEnd === 'function') {
+              this.bot.leftClickEnd()
+              console.log('[WsCommandClient] leftClickEnd executed successfully')
+            } else {
+              console.error('[WsCommandClient] leftClickEnd is not a function:', typeof this.bot.leftClickEnd)
+            }
           }
         } catch (error) {
           console.error('[WsCommandClient] Error in leftUp:', error)
@@ -126,11 +174,34 @@ class TouchEvaluator {
       case 'rightDown':
         try {
           console.log('[WsCommandClient] Executing rightDown command')
-          if (typeof this.bot.rightClickStart === 'function') {
-            this.bot.rightClickStart()
-            console.log('[WsCommandClient] rightClickStart executed successfully')
+
+          // If we're using gamepad input (in inventory/UI), click at cursor position
+          if (miscUiState.usingGamepadInput && wsCursorState.usingWsInput) {
+            const x = (wsCursorState.x / 100) * window.innerWidth
+            const y = (wsCursorState.y / 100) * window.innerHeight
+
+            const event = new MouseEvent('mousedown', {
+              bubbles: true,
+              cancelable: true,
+              clientX: x,
+              clientY: y,
+              button: 2,
+              buttons: 2
+            })
+
+            const elementAtCursor = document.elementFromPoint(x, y)
+            if (elementAtCursor) {
+              elementAtCursor.dispatchEvent(event)
+              console.log(`[WsCommandClient] Right clicked at cursor position (${x}, ${y})`)
+            }
           } else {
-            console.error('[WsCommandClient] rightClickStart is not a function:', typeof this.bot.rightClickStart)
+          // Fallback to direct bot command for game world interaction
+            if (typeof this.bot.rightClickStart === 'function') {
+              this.bot.rightClickStart()
+              console.log('[WsCommandClient] rightClickStart executed successfully')
+            } else {
+              console.error('[WsCommandClient] rightClickStart is not a function:', typeof this.bot.rightClickStart)
+            }
           }
         } catch (error) {
           console.error('[WsCommandClient] Error in rightDown:', error)
@@ -139,11 +210,34 @@ class TouchEvaluator {
       case 'rightUp':
         try {
           console.log('[WsCommandClient] Executing rightUp command')
-          if (typeof this.bot.rightClickEnd === 'function') {
-            this.bot.rightClickEnd()
-            console.log('[WsCommandClient] rightClickEnd executed successfully')
+
+          // If we're using gamepad input (in inventory/UI), click at cursor position
+          if (miscUiState.usingGamepadInput && wsCursorState.usingWsInput) {
+            const x = (wsCursorState.x / 100) * window.innerWidth
+            const y = (wsCursorState.y / 100) * window.innerHeight
+
+            const event = new MouseEvent('mouseup', {
+              bubbles: true,
+              cancelable: true,
+              clientX: x,
+              clientY: y,
+              button: 2,
+              buttons: 0
+            })
+
+            const elementAtCursor = document.elementFromPoint(x, y)
+            if (elementAtCursor) {
+              elementAtCursor.dispatchEvent(event)
+              console.log(`[WsCommandClient] Right click released at cursor position (${x}, ${y})`)
+            }
           } else {
-            console.error('[WsCommandClient] rightClickEnd is not a function:', typeof this.bot.rightClickEnd)
+          // Fallback to direct bot command for game world interaction
+            if (typeof this.bot.rightClickEnd === 'function') {
+              this.bot.rightClickEnd()
+              console.log('[WsCommandClient] rightClickEnd executed successfully')
+            } else {
+              console.error('[WsCommandClient] rightClickEnd is not a function:', typeof this.bot.rightClickEnd)
+            }
           }
         } catch (error) {
           console.error('[WsCommandClient] Error in rightUp:', error)
@@ -183,6 +277,14 @@ class TouchEvaluator {
       }
       case 'look':
         onCameraMove({ movementX: cmd.movementX ?? 0, movementY: cmd.movementY ?? 0, type: 'ws' })
+
+        // Also move cursor when using gamepad input (for inventory/UI navigation)
+        if (miscUiState.usingGamepadInput && (cmd.movementX !== undefined || cmd.movementY !== undefined)) {
+          const dx = (cmd.movementX || 0) * 0.1 // Adjust sensitivity as needed
+          const dy = (cmd.movementY || 0) * 0.1
+          moveWsCursorBy(dx, dy)
+          emitWsMousemove()
+        }
         break
       case 'lookTouch': {
         if (cmd.currentX !== undefined && cmd.lastX !== undefined &&
