@@ -12,6 +12,7 @@ import mimetypes
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 import asyncio
+import argparse
 from .mcp_server import Server, create_tool_functions, Configuration
 import pygame
 import threading
