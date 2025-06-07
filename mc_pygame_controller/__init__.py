@@ -7,7 +7,7 @@ from .ui_elements import (
     KeyboardMovement,
     TouchArea,
 )
-from .controller import MinecraftController
+from .controller_base import MinecraftController
 
 __all__ = [
     "LookPathTracker",
