@@ -499,6 +499,44 @@ server.addTool({
     },
 });
 
+server.addTool({
+    name: "annotate_3d_position",
+    description: "Place a colored marker at the specified world coordinates",
+    parameters: z.object({
+        worldX: z.number(),
+        worldY: z.number(),
+        worldZ: z.number(),
+        label: z.string().optional(),
+        color: z.string().optional(),
+        markerId: z.string().optional(),
+    }),
+    execute: async (args) => {
+        await sendCommand({
+            type: "annotate_3d_position",
+            worldX: args.worldX,
+            worldY: args.worldY,
+            worldZ: args.worldZ,
+            label: args.label || "",
+            color: args.color || "red",
+            markerId: args.markerId,
+        });
+        const screenshotResponse = await captureScreenshot();
+        return {
+            content: [
+                {
+                    type: "text",
+                    text: `Added 3D marker at (${args.worldX}, ${args.worldY}, ${args.worldZ})\n\nCurrent Status:\n${screenshotResponse.status}`,
+                },
+                {
+                    type: "image",
+                    data: screenshotResponse.image,
+                    mimeType: "image/png",
+                },
+            ],
+        };
+    },
+});
+
 
 // Start the server
 const PORT = process.env.PORT ? parseInt(process.env.PORT) : 4000;
