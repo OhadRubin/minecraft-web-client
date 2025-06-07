@@ -7,33 +7,28 @@ from .constants import *
 
 class LookPathTracker:
 
-    def __init__(self, inactivity_timeout_ms=2000, sensitivity=5.0):
+    def __init__(self, sensitivity=5.0, enable_logging=False, mode="pygame"):
         self.movements: List[Dict] = []
         self.positions: List[Dict] = []
         self.max_history = 1000  # Limit history to prevent memory issues
-        self.inactivity_timeout_ms = inactivity_timeout_ms  # Default 2 seconds (still used for fallback)
-        self.last_movement_time = None
         self.current_stats = None  # Store latest angle analysis
         self.execution_callback = None  # Callback for MCP command execution
         self.sensitivity = sensitivity  # Pixels per degree for MCP conversion
+        self.enable_logging = enable_logging  # Enable logging in pygame mode
+        self.mode = mode  # Current mode (pygame or mcp)
 
-        # Mouse-based segmentation
+        # Mouse-based drag detection - primary mechanism
         self.mouse_tracking_active = False  # Track if mouse is currently pressed in camera area
-        self.mouse_released_pending = False  # Flag to execute on next opportunity
+        self.drag_start_time = None  # When current drag started
 
     def add_movement(self, movement_x: int, movement_y: int):
-        """Add a new look movement to the history"""
+        """Add a new look movement to the history (only during active mouse tracking)"""
+        # Only accumulate movements during active mouse tracking (drag)
+        if not self.mouse_tracking_active:
+            print(f"🚫 Movement ignored: tracking not active ({movement_x}, {movement_y})")
+            return
+
         current_time = int(time.time() * 1000)  # milliseconds
-
-        # Check for inactivity-based reset
-        if self.last_movement_time is not None:
-            time_since_last = current_time - self.last_movement_time
-            if time_since_last > self.inactivity_timeout_ms:
-                # Reset due to inactivity
-                self._reset_with_message(time_since_last)
-
-        # Update last movement time
-        self.last_movement_time = current_time
 
         movement = {
             "timestamp": current_time,
@@ -200,56 +195,6 @@ class LookPathTracker:
             "no_movements": no_movement_count,
         }
 
-    def _reset_with_message(self, inactivity_duration_ms):
-        """Internal method to reset with console logging"""
-        # Print final stats before reset if we have any
-        if self.current_stats:
-            print("\n🔄 Path reset due to inactivity! Final stats:")
-            self._print_current_stats()
-            print(f"⏱️  Inactivity duration: {inactivity_duration_ms/1000:.1f}s\n")
-
-            # NEW: Convert to MCP format for execution
-            if (
-                self.current_stats
-                and hasattr(self, "execution_callback")
-                and self.execution_callback
-            ):
-                total_x, total_y = self.current_stats["total_displacement"]
-
-                # Convert pixels to degrees using configurable sensitivity
-                x_angle = total_x / self.sensitivity
-                y_angle = -(
-                    total_y / self.sensitivity
-                )  # Invert Y axis for natural camera control
-
-                # Only execute meaningful movements (filter noise)
-                if abs(x_angle) > 0.2 or abs(y_angle) > 0.2:
-                    mcp_command = {
-                        "tool": "lookAngle",
-                        "parameters": {
-                            "xAngle": round(x_angle, 1),
-                            "yAngle": round(y_angle, 1),
-                            "speed": "normal",
-                        },
-                    }
-                    print(
-                        f"🎯 Converting accumulated movement to MCP: {x_angle:.1f}°, {y_angle:.1f}°"
-                    )
-                    self.execution_callback(mcp_command)
-                else:
-                    print(
-                        f"🔇 Movement too small for MCP conversion: {x_angle:.1f}°, {y_angle:.1f}°"
-                    )
-        else:
-            print(
-                f"🕐 Look path reset due to inactivity ({inactivity_duration_ms/1000:.1f}s gap)"
-            )
-
-        # Reset movement data
-        self.movements.clear()
-        self.positions.clear()
-        self.current_stats = None
-
     def _print_current_stats(self):
         """Print current angle analysis stats"""
         if not self.current_stats:
@@ -279,28 +224,28 @@ class LookPathTracker:
     def clear_history(self):
         """Clear all movement history (manual reset)"""
         print("🗑️ Look path manually cleared")
-        print(f"🔄 Path reset due to inactivity! Final stats:")
-        self._print_current_stats()
-        # print(f"⏱️  Inactivity duration: {inactivity_duration_ms/1000:.1f}s\n")
+        if self.current_stats:
+            print("📊 Final stats before clear:")
+            self._print_current_stats()
         self.movements.clear()
         self.positions.clear()
-        self.last_movement_time = None
-
-    def set_inactivity_timeout(self, timeout_ms: int):
-        """Set the inactivity timeout in milliseconds"""
-        self.inactivity_timeout_ms = timeout_ms
-        print(f"⏰ Inactivity timeout set to {timeout_ms/1000:.1f} seconds")
+        self.current_stats = None
+        self.drag_start_time = None
 
     def get_latest_position(self) -> Optional[Dict]:
         """Get the most recent position"""
         return self.positions[-1] if self.positions else None
 
-    def get_time_since_last_movement(self) -> Optional[float]:
-        """Get time in seconds since last movement, or None if no movements yet"""
-        if self.last_movement_time is None:
+    def get_drag_duration(self) -> Optional[float]:
+        """Get duration of current drag in seconds, or None if not dragging"""
+        if self.drag_start_time is None or not self.mouse_tracking_active:
             return None
         current_time = int(time.time() * 1000)
-        return (current_time - self.last_movement_time) / 1000.0
+        return (current_time - self.drag_start_time) / 1000.0
+
+    def is_dragging(self) -> bool:
+        """Check if currently in a drag operation"""
+        return self.mouse_tracking_active
 
     def set_execution_callback(self, callback):
         """Set callback to execute discrete MCP commands"""
@@ -310,32 +255,45 @@ class LookPathTracker:
     def start_mouse_tracking(self):
         """Called when user starts dragging in camera area (mouse press)"""
         if not self.mouse_tracking_active:
-            print("🖱️ Started mouse tracking for look path")
+            print("🖱️ Started drag operation - accumulating movements")
             self.mouse_tracking_active = True
-            self.mouse_released_pending = False
-            # Don't reset here - keep accumulating movements
+            self.drag_start_time = int(time.time() * 1000)
+            # Reset tracking data for new drag session
+            self.movements.clear()
+            self.positions.clear()
+            self.current_stats = None
+        else:
+            print("⚠️ start_mouse_tracking() called but tracking already active!")
 
     def stop_mouse_tracking(self):
         """Called when user stops dragging in camera area (mouse release)"""
         if self.mouse_tracking_active:
-            print("🖱️ Stopped mouse tracking - will execute command")
+            drag_duration = self.get_drag_duration()
+            print(f"🖱️ Drag completed ({drag_duration:.1f}s) - executing command")
             self.mouse_tracking_active = False
-            self.mouse_released_pending = True
+            self.drag_start_time = None
 
             # Execute accumulated movement immediately
-            self._execute_accumulated_movement("mouse_release")
+            self._execute_accumulated_movement("drag_complete")
 
     def _execute_accumulated_movement(self, trigger_reason):
         """Execute the accumulated movement as an MCP command"""
-        if self.current_stats and self.execution_callback:
+        if self.current_stats:
             total_x, total_y = self.current_stats["total_displacement"]
 
-            # Convert pixels to degrees (MCP server uses 5px = 1 degree)
-            x_angle = total_x / 5.0
-            y_angle = total_y / 5.0
+            # Convert pixels to degrees using configurable sensitivity
+            x_angle = total_x / self.sensitivity
+            y_angle = -(
+                total_y / self.sensitivity
+            )  # Invert Y axis for natural camera control
 
-            # Only execute meaningful movements (filter noise)
-            if abs(x_angle) > 0.2 or abs(y_angle) > 0.2:
+            # Always print drag analysis report
+            print(f"📊 Drag analysis ({trigger_reason}):")
+            self._print_current_stats()
+            print(f"   🎯 Camera rotation: {x_angle:.1f}°, {y_angle:.1f}°")
+
+            # Execute command if callback is available and movement is significant
+            if self.execution_callback and (abs(x_angle) > 0.2 or abs(y_angle) > 0.2):
                 mcp_command = {
                     "tool": "lookAngle",
                     "parameters": {
@@ -344,21 +302,44 @@ class LookPathTracker:
                         "speed": "normal",
                     },
                 }
-                print(f"🎯 Executing accumulated look: {x_angle:.1f}°, {y_angle:.1f}° ({trigger_reason})")
+                print(f"   ✅ Executing MCP command")
                 self.execution_callback(mcp_command)
-
-                # Reset after execution
-                self._reset_tracking_data()
+                
+                # NEW: Also log in pygame mode if logging enabled
+                if self.mode == "pygame" and self.enable_logging:
+                    print(f"LOGGED: {mcp_command}")
+                    
+            elif not self.execution_callback:
+                print(f"   ⚠️  No execution callback set - command not executed")
+                
+                # NEW: Print in pygame mode if logging enabled (even without execution)
+                if self.mode == "pygame" and self.enable_logging and (abs(x_angle) > 0.2 or abs(y_angle) > 0.2):
+                    mcp_command = {
+                        "tool": "lookAngle",
+                        "parameters": {
+                            "xAngle": round(x_angle, 1),
+                            "yAngle": round(y_angle, 1),
+                            "speed": "normal",
+                        },
+                    }
+                    print(f"LOGGED: {mcp_command}")
+                    
             else:
-                print(f"🔇 Movement too small to execute: {x_angle:.1f}°, {y_angle:.1f}°")
+                print(
+                    f"   🔇 Movement too small to execute: {x_angle:.1f}°, {y_angle:.1f}°"
+                )
+        else:
+            print(f"🔇 No movement data recorded during drag")
+
+        # Always reset after drag completion
+        self._reset_tracking_data()
 
     def _reset_tracking_data(self):
-        """Reset tracking data but keep mouse state"""
+        """Reset tracking data after command execution"""
         self.movements.clear()
         self.positions.clear()
         self.current_stats = None
-        self.mouse_released_pending = False
-        print("🗑️ Reset look path tracking data")
+        print("🗑️ Reset drag tracking data")
 
 
 class LookPathVisualizationArea:
@@ -497,12 +478,16 @@ class LookPathVisualizationArea:
         pygame.draw.rect(surface, (0, 0, 0, 128), info_rect)
         pygame.draw.rect(surface, WHITE, info_rect, 1)
 
-        if not path_tracker.current_stats:
-            # Show basic info when no movements
+        # Check if currently dragging
+        is_dragging = path_tracker.is_dragging()
+        drag_duration = path_tracker.get_drag_duration()
+
+        if not path_tracker.current_stats and not is_dragging:
+            # Show basic info when no movements and not dragging
             info_lines = [
-                f"No movements recorded",
-                f"Inactivity timeout: {path_tracker.inactivity_timeout_ms/1000:.1f}s",
-                f"Time since last: N/A",
+                f"No active drag",
+                f"Click and drag to move camera",
+                f"Release to execute command",
             ]
 
             y_offset = info_rect.y + 8
@@ -512,23 +497,35 @@ class LookPathVisualizationArea:
                 y_offset += 16
             return
 
+        if is_dragging and not path_tracker.current_stats:
+            # Show drag started but no movements yet
+            info_lines = [
+                f"🖱️ Drag active",
+                f"Duration: {drag_duration:.1f}s" if drag_duration else "Starting...",
+                f"Move mouse to look around",
+            ]
+
+            y_offset = info_rect.y + 8
+            for line in info_lines:
+                color = (
+                    (0, 255, 0) if line.startswith("🖱️") else WHITE
+                )  # Green for active drag
+                text = self.font.render(line, True, color)
+                surface.blit(text, (info_rect.x + 5, y_offset))
+                y_offset += 16
+            return
+
         stats = path_tracker.current_stats
         latest = path_tracker.get_latest_position()
 
-        # Get time since last movement
-        time_since_last = path_tracker.get_time_since_last_movement()
-        time_since_str = (
-            f"{time_since_last:.1f}s" if time_since_last is not None else "N/A"
-        )
+        # Status color based on drag state
+        status_color = (
+            (0, 255, 0) if is_dragging else (255, 255, 0)
+        )  # Green if dragging, yellow if completed
+        status_text = "🖱️ Dragging..." if is_dragging else "✅ Drag completed"
 
-        # Color code based on inactivity timeout proximity
-        timeout_threshold = path_tracker.inactivity_timeout_ms / 1000.0
-        if time_since_last and time_since_last > timeout_threshold * 0.8:
-            time_color = (255, 200, 0)  # Orange
-        elif time_since_last and time_since_last > timeout_threshold * 0.6:
-            time_color = (255, 255, 0)  # Yellow
-        else:
-            time_color = WHITE
+        # Duration info
+        duration_str = f"{drag_duration:.1f}s" if drag_duration else "N/A"
 
         # Info text with angle analysis
         info_lines = [
@@ -540,16 +537,23 @@ class LookPathVisualizationArea:
             f"Y angle: {stats['y_component_angle_deg']:.1f}°",
             f"Efficiency: {stats['path_efficiency']:.1%}",
             f"X/Y/Mixed: {stats['x_only_movements']}/{stats['y_only_movements']}/{stats['mixed_movements']}",
-            f"Timeout: {timeout_threshold:.1f}s",
         ]
 
         y_offset = info_rect.y + 8
+
+        # Status line with color coding
+        status_surface = self.font.render(status_text, True, status_color)
+        surface.blit(status_surface, (info_rect.x + 5, y_offset))
+        y_offset += 16
+
+        # Duration line
+        duration_text = f"Duration: {duration_str}"
+        duration_surface = self.font.render(duration_text, True, WHITE)
+        surface.blit(duration_surface, (info_rect.x + 5, y_offset))
+        y_offset += 16
+
+        # Movement info
         for line in info_lines:
             text = self.font.render(line, True, WHITE)
             surface.blit(text, (info_rect.x + 5, y_offset))
             y_offset += 16
-
-        # Special handling for time since last movement (with color coding)
-        time_text = f"Idle: {time_since_str}"
-        time_surface = self.font.render(time_text, True, time_color)
-        surface.blit(time_surface, (info_rect.x + 5, y_offset))

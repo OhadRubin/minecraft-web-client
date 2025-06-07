@@ -301,23 +301,17 @@ async function stepLook(xAngle: number, yAngle: number, speed: "slow" | "normal"
     }[speed];
 
     const totalPixelX = xAngle * SENSITIVITY_X;
-    const totalPixelY = yAngle * SENSITIVITY_Y;
+    const totalPixelY = -yAngle * SENSITIVITY_Y;  // Invert Y to match pygame controller's coordinate system
 
     const maxDisplacement = Math.max(Math.abs(totalPixelX), Math.abs(totalPixelY));
     const steps = Math.max(1, Math.ceil(maxDisplacement / config.avgPixelsPerStep));
 
-    const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2;
+    // Use exact division instead of easing to eliminate cumulative rounding errors
+    const stepX = totalPixelX / steps;  // Exact float division
+    const stepY = totalPixelY / steps;  // Exact float division
 
-    let prev = 0;
     for (let i = 0; i < steps; i++) {
-        const progress = easeInOutSine((i + 1) / steps);
-        const weight = progress - prev;
-        prev = progress;
-
-        const dx = totalPixelX * weight;
-        const dy = totalPixelY * weight;
-
-        await sendCommand({ type: "look", movementX: dx, movementY: dy });
+        await sendCommand({ type: "look", movementX: stepX, movementY: stepY });
         await new Promise((resolve) => setTimeout(resolve, config.delay));
     }
 }
@@ -412,14 +406,16 @@ server.addTool({
     name: "rightClick",
     description: "Hold right click for a specified duration (useful for actions like eating or using a shield)",
     parameters: z.object({
-        duration: z.enum(["short", "medium", "long", "very_long"]).optional().default("medium").describe("Duration to hold: short (500ms), medium (1000ms), long (2000ms), very_long (5000ms)"),
+        duration: z.enum(["very_short","short", "medium", "long", "very_long","very_very_long"]).optional().default("medium").describe("Duration to hold: very_short (100ms), short (500ms), medium (1000ms), long (2000ms), very_long (5000ms), very_very_long (10000ms)"),
     }),
     execute: async (args) => {
         const durationMs = {
+            "very_short": 100,
             "short": 500,
             "medium": 1000,
             "long": 2000,
             "very_long": 5000,
+            "very_very_long": 10000,
         }[args.duration];
 
         // Use documentMouseEvent commands (same as working pygame implementation)
@@ -458,14 +454,16 @@ server.addTool({
     name: "leftClick",
     description: "Hold left click for a specified duration (useful for actions like breaking blocks or attacking)",
     parameters: z.object({
-        duration: z.enum(["short", "medium", "long", "very_long"]).optional().default("medium").describe("Duration to hold: short (500ms), medium (1000ms), long (2000ms), very_long (5000ms)"),
+        duration: z.enum(["very_short","short", "medium", "long", "very_long","very_very_long"]).optional().default("medium").describe("Duration to hold: very_short (100ms), short (500ms), medium (1000ms), long (2000ms), very_long (5000ms), very_very_long (10000ms)"),
     }),
     execute: async (args) => {
         const durationMs = {
+            "very_short": 100,
             "short": 500,
             "medium": 1000,
             "long": 2000,
             "very_long": 5000,
+            "very_very_long": 10000,
         }[args.duration];
 
         // Use documentMouseEvent commands (same as working pygame implementation)

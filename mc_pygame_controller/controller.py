@@ -208,6 +208,12 @@ if __name__ == "__main__":
         default=5.0,
         help="Mouse sensitivity for MCP mode (pixels per degree, default: 5.0). Lower = more sensitive",
     )
+    parser.add_argument(
+        "--enable-logging",
+        action="store_true",
+        default=True,
+        help="Enable logging of pygame commands in MCP format (for data collection)",
+    )
     args = parser.parse_args()
 
     # Determine mode
@@ -215,7 +221,7 @@ if __name__ == "__main__":
 
     # Create and run controller
     if mode == "pygame":
-        controller = MinecraftController(mode=mode)
+        controller = MinecraftController(mode=mode, enable_logging=getattr(args, 'enable_logging', False))
         controller.run()
     else:
         async def runner():

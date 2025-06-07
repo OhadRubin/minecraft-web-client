@@ -1,32 +1,57 @@
+"""
+Minecraft Web Client Controller - Refactored for DRY Principles
+
+Major refactoring improvements:
+1. Eliminated code duplication in click/action handlers using generic _handle_timed_action and _handle_toggle_action
+2. Centralized keyboard edge detection with _detect_key_edge method
+3. Unified logging with _log_mcp_command utility
+4. Updated duration mapping to match MCP server capabilities (very_short to very_very_long)
+5. Consolidated UI initialization into _init_ui_buttons and _init_hotbar_buttons
+6. Refactored keyboard handling into reusable _handle_keyboard_shortcuts method
+7. Extracted camera drag handling into _handle_camera_drag_state method
+8. Simplified state management with dictionaries instead of individual attributes
+"""
+
 import asyncio
 import json
 import websockets
 import threading
 import sys
 import argparse
-from typing import Optional
+from typing import Optional, Dict, Any, Callable
 import time
 
 import pygame
 
 from .constants import *
 from .look_path import LookPathTracker, LookPathVisualizationArea
-from .ui_elements import Button, ToggleButton, VirtualJoystick, KeyboardMovement, TouchArea
+from .ui_elements import (
+    Button,
+    ToggleButton,
+    VirtualJoystick,
+    KeyboardMovement,
+    TouchArea,
+)
 import argparse
 
 
 class MinecraftController:
 
-    def __init__(self, mode="pygame", chain_args=None, sensitivity=5.0):
+    def __init__(
+        self, mode="pygame", chain_args=None, sensitivity=5.0, enable_logging=False
+    ):
         self.mode = mode  # "pygame" or "mcp"
         self.sensitivity = sensitivity  # Mouse sensitivity for MCP mode
+        self.enable_logging = enable_logging  # Enable logging in pygame mode
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Minecraft Web Client Controller")
         self.clock = pygame.time.Clock()
         self.running = True
 
         # Look path tracking
-        self.look_path_tracker = LookPathTracker(sensitivity=sensitivity)
+        self.look_path_tracker = LookPathTracker(
+            sensitivity=sensitivity, enable_logging=enable_logging, mode=mode
+        )
         self.look_visualization = LookPathVisualizationArea(
             1230, 50, 350, 300
         )  # Right side visualization
@@ -47,6 +72,67 @@ class MinecraftController:
             400, 50, 800, 500
         )  # Much larger camera area: 800x500
 
+        # Initialize UI buttons
+        self._init_ui_buttons()
+
+        # State tracking for hotbar
+        self.current_hotbar_slot = 0  # Currently selected slot (0-8)
+        self.last_hotbar_slot = -1  # Track last set slot to avoid duplicate commands
+
+        # WebSocket connection
+        self.websocket: Optional[websockets.WebSocketServerProtocol] = None
+        self.connected = False
+        self.connection_thread = None
+        self.loop = None  # Store the event loop for cross-thread communication
+
+        # State tracking
+        self.last_movement = (0.0, 0.0)
+
+        # Action state tracking with timing
+        self._action_states = {
+            "left_click": {"active": False, "start_time": None},
+            "right_click": {"active": False, "start_time": None},
+            "jump": {"active": False, "start_time": None},
+            "sneak": {"active": False},
+            "sprint": {"active": False},
+        }
+
+        self.font = pygame.font.Font(None, 36)
+        self.small_font = pygame.font.Font(None, 24)
+
+        # Mouse tracking state for camera area
+        self.camera_was_touching = False
+
+        # Keyboard shortcut states - using a dictionary for cleaner management
+        self._key_states = {
+            "ctrl": False,
+            "tab": False,
+            "z": False,
+            "x": False,
+            "space": False,
+            "q": False,
+            "f": False,
+            "c": False,
+        }
+
+        # Key press tracking for edge detection
+        self._last_key_states = {}
+
+        # MCP execution state (mode-independent)
+        self.mcp_executor = None
+
+        # Connect LookPathTracker for MCP mode
+        if self.mode == "mcp":
+            self.look_path_tracker.set_execution_callback(self.execute_mcp_action)
+
+        # Asyncio integration (following asyncio_pygame_example.py pattern)
+        self.event_loop = None
+        self.event_queue = None
+        self.command_queue = None
+        self.result_queue = None  # Queue for MCP results
+
+    def _init_ui_buttons(self):
+        """Initialize all UI buttons with consistent layout"""
         # Action Buttons
         button_width = 100  # Slightly larger buttons
         button_height = 40
@@ -139,6 +225,10 @@ class MinecraftController:
         )
 
         # Hotbar Slot Buttons (1-9)
+        self._init_hotbar_buttons()
+
+    def _init_hotbar_buttons(self):
+        """Initialize hotbar buttons"""
         hotbar_button_width = 50
         hotbar_button_height = 40
         hotbar_start_x = 50
@@ -159,50 +249,122 @@ class MinecraftController:
             )
             self.hotbar_buttons.append(button)
 
-        # State tracking for hotbar
-        self.current_hotbar_slot = 0  # Currently selected slot (0-8)
-        self.last_hotbar_slot = -1  # Track last set slot to avoid duplicate commands
+    def _calculate_duration(self, start_time: Optional[float]) -> str:
+        """Calculate duration string from start time - updated with more options"""
+        if not start_time:
+            return "medium"
 
-        # WebSocket connection
-        self.websocket: Optional[websockets.WebSocketServerProtocol] = None
-        self.connected = False
-        self.connection_thread = None
-        self.loop = None  # Store the event loop for cross-thread communication
+        duration_ms = int((time.time() - start_time) * 1000)
 
-        # State tracking
-        self.last_movement = (0.0, 0.0)
-        self.left_clicking = False
-        self.right_clicking = False
-        self.jumping = False
-        self.sneaking = False
-        self.sprinting = False
-        self.font = pygame.font.Font(None, 36)
-        self.small_font = pygame.font.Font(None, 24)
+        # Updated duration mapping to match MCP server capabilities
+        if duration_ms < 150:
+            return "very_short"  # 100ms
+        elif duration_ms < 750:
+            return "short"  # 500ms
+        elif duration_ms < 1500:
+            return "medium"  # 1000ms
+        elif duration_ms < 3500:
+            return "long"  # 2000ms
+        elif duration_ms < 7500:
+            return "very_long"  # 5000ms
+        else:
+            return "very_very_long"  # 10000ms
 
-        # Mouse tracking state for camera area
-        self.camera_was_touching = False
+    def _log_mcp_command(self, tool: str, parameters: Dict[str, Any]):
+        """Log MCP command if logging is enabled"""
+        if self.enable_logging:
+            mcp_command = {"tool": tool, "parameters": parameters}
+            print(f"LOGGED: {mcp_command}")
 
-        # Keyboard shortcut states
-        self._ctrl_pressed = False
-        self._tab_pressed = False
-        self._z_pressed = False
-        self._x_pressed = False
-        self._space_pressed = False
-        self._q_pressed = False
-        self._f_pressed = False
+    def _handle_timed_action(
+        self,
+        action_name: str,
+        pressed: bool,
+        pygame_down_cmd: Dict[str, Any],
+        pygame_up_cmd: Dict[str, Any],
+        mcp_tool: str,
+        mcp_params_func: Callable[[str], Dict[str, Any]] = None,
+    ):
+        """Generic handler for timed actions (clicks, jump, etc.)"""
+        state = self._action_states[action_name]
 
-        # MCP execution state (mode-independent)
-        self.mcp_executor = None
+        if pressed and not state["active"]:
+            print(f"{action_name.upper()} DOWN - sending command")
+            state["start_time"] = time.time()
 
-        # Connect LookPathTracker for MCP mode
-        if self.mode == "mcp":
-            self.look_path_tracker.set_execution_callback(self.execute_mcp_action)
+            if self.mode == "pygame":
+                self.send_command_sync(pygame_down_cmd)
+            state["active"] = True
 
-        # Asyncio integration (following asyncio_pygame_example.py pattern)
-        self.event_loop = None
-        self.event_queue = None
-        self.command_queue = None
-        self.result_queue = None  # Queue for MCP results
+        elif not pressed and state["active"]:
+            print(f"{action_name.upper()} UP - sending command")
+
+            duration = self._calculate_duration(state["start_time"])
+            state["start_time"] = None
+
+            if self.mode == "pygame":
+                self.send_command_sync(pygame_up_cmd)
+                # Log the action in pygame mode
+                mcp_params = (
+                    mcp_params_func(duration)
+                    if mcp_params_func
+                    else {"duration": duration}
+                )
+                self._log_mcp_command(mcp_tool, mcp_params)
+            else:  # mcp mode
+                mcp_params = (
+                    mcp_params_func(duration)
+                    if mcp_params_func
+                    else {"duration": duration}
+                )
+                self.handle_other_commands(mcp_tool, **mcp_params)
+
+            state["active"] = False
+
+    def _handle_toggle_action(
+        self, action_name: str, toggled: bool, pygame_control: str, mcp_tool: str
+    ):
+        """Generic handler for toggle actions (sneak, sprint)"""
+        state = self._action_states[action_name]
+
+        if toggled != state["active"]:
+            if self.mode == "pygame":
+                self.send_command_sync(
+                    {"type": "control", "control": pygame_control, "state": toggled}
+                )
+                self._log_mcp_command(mcp_tool, {"state": toggled})
+            else:  # mcp mode
+                self.handle_other_commands(mcp_tool, state=toggled)
+            state["active"] = toggled
+
+    def _detect_key_edge(self, key_name: str, current_state: bool) -> tuple[bool, bool]:
+        """Detect key press/release edges. Returns (just_pressed, just_released)"""
+        last_state = self._last_key_states.get(key_name, False)
+        self._last_key_states[key_name] = current_state
+
+        just_pressed = current_state and not last_state
+        just_released = not current_state and last_state
+
+        return just_pressed, just_released
+
+    def _handle_camera_drag_state(self, mouse_pressed: bool):
+        """Handle camera drag state changes for look tracking"""
+        camera_is_clicking = self.camera_area.is_touching and mouse_pressed
+        prev_clicking = getattr(self, "camera_was_clicking", False)
+
+        if camera_is_clicking != prev_clicking:
+            print(
+                f"🔍 Camera state change: clicking={camera_is_clicking}, was_clicking={prev_clicking}"
+            )
+
+        if camera_is_clicking and not prev_clicking:
+            print("🖱️ Mouse pressed in camera area - starting drag tracking")
+            self.look_path_tracker.start_mouse_tracking()
+            self.camera_was_clicking = True
+        elif not mouse_pressed and prev_clicking:
+            print("🖱️ Mouse released - ending drag tracking")
+            self.look_path_tracker.stop_mouse_tracking()
+            self.camera_was_clicking = False
 
     async def connect_websocket(self):
         try:
@@ -272,6 +434,16 @@ class MinecraftController:
             if self.mode == "pygame":
                 command = {"type": "move", "x": movement_x, "z": movement_z}
                 self.send_command_sync(command)
+
+                # Log movement in pygame mode if logging enabled
+                if self.enable_logging and (
+                    abs(movement_x) > 0.1 or abs(movement_z) > 0.1
+                ):
+                    # Calculate duration based on movement magnitude (same as MCP mode)
+                    magnitude = (movement_x**2 + movement_z**2) ** 0.5
+                    duration = int(magnitude * 2000)  # Scale to reasonable duration
+                    self._log_mcp_command("walk", {"duration": duration})
+
             else:  # mcp mode
                 # Convert movement to walk command
                 if abs(movement_x) > 0.1 or abs(movement_z) > 0.1:
@@ -302,85 +474,52 @@ class MinecraftController:
                 self.send_command_sync(command)
 
     def handle_left_click(self, pressed: bool):
-        if pressed and not self.left_clicking:
-            print("LEFT CLICK DOWN - sending command")
-            if self.mode == "pygame":
-                self.send_command_sync(
-                    {
-                        "type": "documentMouseEvent",
-                        "button": 0,
-                        "action": "down",
-                        "updateMouse": True,
-                    }
-                )
-            else:
-                self.handle_other_commands("left_click", duration="medium")
-            self.left_clicking = True
-        elif not pressed and self.left_clicking:
-            print("LEFT CLICK UP - sending command")
-            if self.mode == "pygame":
-                self.send_command_sync(
-                    {
-                        "type": "documentMouseEvent",
-                        "button": 0,
-                        "action": "up",
-                        "updateMouse": False,
-                    }
-                )
-            # Note: MCP leftClick is a single action, not separate up/down
-            self.left_clicking = False
+        """Handle left click using the generic timed action handler"""
+        self._handle_timed_action(
+            "left_click",
+            pressed,
+            {
+                "type": "documentMouseEvent",
+                "button": 0,
+                "action": "down",
+                "updateMouse": True,
+            },
+            {
+                "type": "documentMouseEvent",
+                "button": 0,
+                "action": "up",
+                "updateMouse": False,
+            },
+            "left_click",
+        )
 
     def handle_right_click(self, pressed: bool):
-        if pressed and not self.right_clicking:
-            print("RIGHT CLICK DOWN - sending command")
-            if self.mode == "pygame":
-                self.send_command_sync({"type": "rightDown"})
-            else:
-                self.handle_other_commands("right_click", duration="medium")
-            self.right_clicking = True
-        elif not pressed and self.right_clicking:
-            print("RIGHT CLICK UP - sending command")
-            if self.mode == "pygame":
-                self.send_command_sync({"type": "rightUp"})
-            # Note: MCP rightClick is a single action, not separate up/down
-            self.right_clicking = False
+        """Handle right click using the generic timed action handler"""
+        self._handle_timed_action(
+            "right_click",
+            pressed,
+            {"type": "rightDown"},
+            {"type": "rightUp"},
+            "right_click",
+        )
 
     def handle_jump(self, pressed: bool):
-        if pressed and not self.jumping:
-            if self.mode == "pygame":
-                self.send_command_sync(
-                    {"type": "control", "control": "jump", "state": True}
-                )
-            else:  # mcp mode
-                self.handle_other_commands("jump", duration="short")
-            self.jumping = True
-        elif not pressed and self.jumping:
-            if self.mode == "pygame":
-                self.send_command_sync(
-                    {"type": "control", "control": "jump", "state": False}
-                )
-            # Note: MCP jump is a single action, not separate up/down
-            self.jumping = False
+        """Handle jump using the generic timed action handler"""
+        self._handle_timed_action(
+            "jump",
+            pressed,
+            {"type": "control", "control": "jump", "state": True},
+            {"type": "control", "control": "jump", "state": False},
+            "jump",
+        )
 
     def handle_sneak(self, toggled: bool):
-        if toggled != self.sneaking:
-            if self.mode == "pygame":
-                self.send_command_sync(
-                    {"type": "control", "control": "sneak", "state": toggled}
-                )
-            else:  # mcp mode
-                self.handle_other_commands("sneak", state=toggled)
-            self.sneaking = toggled
+        """Handle sneak using the generic toggle handler"""
+        self._handle_toggle_action("sneak", toggled, "sneak", "sneak")
 
     def handle_sprint(self, toggled: bool):
-        if toggled != self.sprinting:
-            if self.mode == "pygame":
-                self.send_command_sync(
-                    {"type": "control", "control": "sprint", "state": toggled}
-                )
-            else:  # mcp mode
-                self.handle_other_commands("sprint", state=toggled)
-            self.sprinting = toggled
+        """Handle sprint using the generic toggle handler"""
+        self._handle_toggle_action("sprint", toggled, "sprint", "sprint")
 
     def handle_control_button(self, control: str, state: bool):
         command = {"type": "control", "control": control, "state": state}
@@ -394,6 +533,9 @@ class MinecraftController:
             # Immediately release
             command = {"type": "control", "control": "inventory", "state": False}
             self.send_command_sync(command)
+
+            self._log_mcp_command("openInventory", {})
+
         else:  # mcp mode
             self.handle_other_commands("openInventory")
 
@@ -404,6 +546,9 @@ class MinecraftController:
             if self.mode == "pygame":
                 command = {"type": "setHotbarSlot", "slot": slot}
                 self.send_command_sync(command)
+
+                self._log_mcp_command("setHotbarSlot", {"slot": slot})
+
             else:
                 self.handle_other_commands("setHotbarSlot", slot=slot)
             self.current_hotbar_slot = slot
@@ -415,6 +560,9 @@ class MinecraftController:
         if self.mode == "pygame":
             command = {"type": "dropItem", "amount": 1}
             self.send_command_sync(command)
+
+            self._log_mcp_command("dropItem", {"amount": 1})
+
         else:  # mcp mode
             self.handle_other_commands("dropItem", amount=1)
 
@@ -424,6 +572,9 @@ class MinecraftController:
         if self.mode == "pygame":
             command = {"type": "swapHands"}
             self.send_command_sync(command)
+
+            self._log_mcp_command("swapHands", {})
+
         else:  # mcp mode
             self.handle_other_commands("swapHands")
 
@@ -619,20 +770,9 @@ class MinecraftController:
 
         # Draw keyboard shortcut status
         shortcut_status = []
-        if self._ctrl_pressed:
-            shortcut_status.append("Ctrl")
-        if self._tab_pressed:
-            shortcut_status.append("Tab")
-        if self._z_pressed:
-            shortcut_status.append("Z")
-        if self._x_pressed:
-            shortcut_status.append("X")
-        if self._space_pressed:
-            shortcut_status.append("Space")
-        if self._q_pressed:
-            shortcut_status.append("Q")
-        if self._f_pressed:
-            shortcut_status.append("F")
+        for key, state in self._key_states.items():
+            if state:
+                shortcut_status.append(key.upper())
 
         shortcut_text = "Shortcuts: " + (
             ", ".join(shortcut_status) if shortcut_status else "None"
@@ -697,87 +837,30 @@ class MinecraftController:
             )
 
             # Handle keyboard shortcuts for clicking
-            ctrl_pressed = keys_pressed[pygame.K_LCTRL] or keys_pressed[pygame.K_RCTRL]
-            tab_pressed = keys_pressed[pygame.K_TAB]
+            ctrl_current = keys_pressed[pygame.K_LCTRL] or keys_pressed[pygame.K_RCTRL]
+            tab_current = keys_pressed[pygame.K_TAB]
+            z_current = keys_pressed[pygame.K_z]
+            x_current = keys_pressed[pygame.K_x]
+            space_current = keys_pressed[pygame.K_SPACE]
+            q_current = keys_pressed[pygame.K_q]
+            f_current = keys_pressed[pygame.K_f]
 
-            # Add alternative keys that are less likely to be intercepted
-            z_pressed = keys_pressed[pygame.K_z]
-            x_pressed = keys_pressed[pygame.K_x]
-
-            # Add spacebar for jumping
-            space_pressed = keys_pressed[pygame.K_SPACE]
-
-            # Add item management shortcuts
-            q_pressed = keys_pressed[pygame.K_q]  # Drop item (standard Minecraft)
-            f_pressed = keys_pressed[pygame.K_f]  # Swap hands (standard Minecraft)
+            # Store current states for UI display
+            self._key_states["ctrl"] = ctrl_current
+            self._key_states["tab"] = tab_current
+            self._key_states["z"] = z_current
+            self._key_states["x"] = x_current
+            self._key_states["space"] = space_current
+            self._key_states["q"] = q_current
+            self._key_states["f"] = f_current
 
             # Combine all left click inputs
-            left_click_input = ctrl_pressed or z_pressed
+            left_click_input = ctrl_current or z_current
             # Combine all right click inputs
-            right_click_input = tab_pressed or x_pressed
+            right_click_input = tab_current or x_current
 
-            # Store keyboard shortcut states for UI display
-            self._ctrl_pressed = ctrl_pressed
-            self._tab_pressed = tab_pressed
-            self._z_pressed = z_pressed
-            self._x_pressed = x_pressed
-            self._space_pressed = space_pressed
-            self._q_pressed = q_pressed
-            self._f_pressed = f_pressed
-
-            # Debug output for keyboard detection
-            if ctrl_pressed and not hasattr(self, "_last_ctrl_pressed"):
-                print("Ctrl pressed detected!")
-                self._last_ctrl_pressed = True
-            elif not ctrl_pressed and hasattr(self, "_last_ctrl_pressed"):
-                print("Ctrl released detected!")
-                delattr(self, "_last_ctrl_pressed")
-
-            if tab_pressed and not hasattr(self, "_last_tab_pressed"):
-                print("Tab pressed detected!")
-                self._last_tab_pressed = True
-            elif not tab_pressed and hasattr(self, "_last_tab_pressed"):
-                print("Tab released detected!")
-                delattr(self, "_last_tab_pressed")
-
-            # Debug for alternative keys
-            if z_pressed and not hasattr(self, "_last_z_pressed"):
-                print("Z pressed detected! (Left click)")
-                self._last_z_pressed = True
-            elif not z_pressed and hasattr(self, "_last_z_pressed"):
-                print("Z released detected!")
-                delattr(self, "_last_z_pressed")
-
-            if x_pressed and not hasattr(self, "_last_x_pressed"):
-                print("X pressed detected! (Right click)")
-                self._last_x_pressed = True
-            elif not x_pressed and hasattr(self, "_last_x_pressed"):
-                print("X released detected!")
-                delattr(self, "_last_x_pressed")
-
-            # Debug for spacebar
-            if space_pressed and not hasattr(self, "_last_space_pressed"):
-                print("Spacebar pressed detected! (Jump)")
-                self._last_space_pressed = True
-            elif not space_pressed and hasattr(self, "_last_space_pressed"):
-                print("Spacebar released detected!")
-                delattr(self, "_last_space_pressed")
-
-            # Debug for Q key (drop item)
-            if q_pressed and not hasattr(self, "_last_q_pressed"):
-                print("Q pressed detected! (Drop item)")
-                self.handle_drop_item()
-                self._last_q_pressed = True
-            elif not q_pressed and hasattr(self, "_last_q_pressed"):
-                delattr(self, "_last_q_pressed")
-
-            # Debug for F key (swap hands)
-            if f_pressed and not hasattr(self, "_last_f_pressed"):
-                print("F pressed detected! (Swap hands)")
-                self.handle_swap_hands()
-                self._last_f_pressed = True
-            elif not f_pressed and hasattr(self, "_last_f_pressed"):
-                delattr(self, "_last_f_pressed")
+            # Handle keyboard shortcuts using the refactored method
+            self._handle_keyboard_shortcuts(q_current, f_current, keys_pressed)
 
             # Handle movement joystick
             joystick_move_x, joystick_move_y = self.movement_joystick.handle_mouse(
@@ -790,22 +873,11 @@ class MinecraftController:
             else:
                 self.handle_movement(joystick_move_x, joystick_move_y)
 
-            # Handle camera look area
+                # Handle camera look area
             delta_x, delta_y = self.camera_area.handle_mouse(mouse_pos, mouse_pressed)
 
-            # Track mouse press/release state changes for MCP mode
-            if self.mode == "mcp":
-                camera_is_touching = self.camera_area.is_touching
-
-                # Detect state changes
-                if camera_is_touching and not self.camera_was_touching:
-                    # Mouse just pressed in camera area
-                    self.look_path_tracker.start_mouse_tracking()
-                elif not camera_is_touching and self.camera_was_touching:
-                    # Mouse just released from camera area
-                    self.look_path_tracker.stop_mouse_tracking()
-
-                self.camera_was_touching = camera_is_touching
+            # Track mouse click-and-drag state changes for camera look
+            self._handle_camera_drag_state(mouse_pressed)
 
             self.handle_camera_look(delta_x, delta_y)
 
@@ -822,7 +894,7 @@ class MinecraftController:
 
             # Handle jump button - check both press and release
             self.jump_btn.handle_mouse(mouse_pos, mouse_pressed)
-            self.handle_jump(self.jump_btn.is_pressed or space_pressed)
+            self.handle_jump(self.jump_btn.is_pressed or space_current)
 
             # Handle toggle buttons - only send command when toggled
             if self.sneak_btn.handle_mouse(mouse_pos, mouse_pressed):
@@ -858,65 +930,33 @@ class MinecraftController:
                 if button.handle_mouse(mouse_pos, mouse_pressed):
                     self.handle_hotbar_slot(i)  # i is already 0-8
 
-            # Handle keyboard shortcuts for hotbar slots (1-9 keys)
-            hotbar_keys = [
-                pygame.K_1,
-                pygame.K_2,
-                pygame.K_3,
-                pygame.K_4,
-                pygame.K_5,
-                pygame.K_6,
-                pygame.K_7,
-                pygame.K_8,
-                pygame.K_9,
-            ]
-
-            for i, key in enumerate(hotbar_keys):
-                key_pressed = keys_pressed[key]
-                last_key_attr = f"_last_hotbar_{i}_pressed"
-
-                # Only trigger on key press (not hold)
-                if key_pressed and not hasattr(self, last_key_attr):
-                    print(f"Hotbar key {i + 1} pressed!")
-                    self.handle_hotbar_slot(i)  # i is already 0-8
-                    setattr(self, last_key_attr, True)
-                elif not key_pressed and hasattr(self, last_key_attr):
-                    delattr(self, last_key_attr)
-
-            # Handle keyboard shortcut for clearing path (C key)
-            c_pressed = keys_pressed[pygame.K_c]
-            if c_pressed and not hasattr(self, "_last_c_pressed"):
-                self.handle_clear_path()
-                print("Look path cleared with C key!")
-                self._last_c_pressed = True
-            elif not c_pressed and hasattr(self, "_last_c_pressed"):
-                delattr(self, "_last_c_pressed")
+            # Hotbar and C key handling is now done in _handle_keyboard_shortcuts
 
         # MCP tasks are now handled in animation_loop
 
     def _handle_all_inputs(self, mouse_pos, mouse_pressed, keys_pressed):
         """Handle all input processing (extracted from main loop)"""
         # Handle keyboard shortcuts
-        ctrl_pressed = keys_pressed[pygame.K_LCTRL] or keys_pressed[pygame.K_RCTRL]
-        tab_pressed = keys_pressed[pygame.K_TAB]
-        z_pressed = keys_pressed[pygame.K_z]
-        x_pressed = keys_pressed[pygame.K_x]
-        space_pressed = keys_pressed[pygame.K_SPACE]
-        q_pressed = keys_pressed[pygame.K_q]
-        f_pressed = keys_pressed[pygame.K_f]
+        ctrl_current = keys_pressed[pygame.K_LCTRL] or keys_pressed[pygame.K_RCTRL]
+        tab_current = keys_pressed[pygame.K_TAB]
+        z_current = keys_pressed[pygame.K_z]
+        x_current = keys_pressed[pygame.K_x]
+        space_current = keys_pressed[pygame.K_SPACE]
+        q_current = keys_pressed[pygame.K_q]
+        f_current = keys_pressed[pygame.K_f]
 
         # Store keyboard shortcut states for UI display
-        self._ctrl_pressed = ctrl_pressed
-        self._tab_pressed = tab_pressed
-        self._z_pressed = z_pressed
-        self._x_pressed = x_pressed
-        self._space_pressed = space_pressed
-        self._q_pressed = q_pressed
-        self._f_pressed = f_pressed
+        self._key_states["ctrl"] = ctrl_current
+        self._key_states["tab"] = tab_current
+        self._key_states["z"] = z_current
+        self._key_states["x"] = x_current
+        self._key_states["space"] = space_current
+        self._key_states["q"] = q_current
+        self._key_states["f"] = f_current
 
         # Handle clicks
-        left_click_input = ctrl_pressed or z_pressed
-        right_click_input = tab_pressed or x_pressed
+        left_click_input = ctrl_current or z_current
+        right_click_input = tab_current or x_current
 
         # Handle action buttons
         self.left_click_btn.handle_mouse(mouse_pos, mouse_pressed)
@@ -926,7 +966,7 @@ class MinecraftController:
         self.handle_right_click(self.right_click_btn.is_pressed or right_click_input)
 
         self.jump_btn.handle_mouse(mouse_pos, mouse_pressed)
-        self.handle_jump(self.jump_btn.is_pressed or space_pressed)
+        self.handle_jump(self.jump_btn.is_pressed or space_current)
 
         # Handle toggle buttons
         if self.sneak_btn.handle_mouse(mouse_pos, mouse_pressed):
@@ -958,23 +998,21 @@ class MinecraftController:
                 self.handle_hotbar_slot(i)
 
         # Handle keyboard shortcuts for various actions
-        self._handle_keyboard_shortcuts(q_pressed, f_pressed, keys_pressed)
+        self._handle_keyboard_shortcuts(q_current, f_current, keys_pressed)
 
-    def _handle_keyboard_shortcuts(self, q_pressed, f_pressed, keys_pressed):
+    def _handle_keyboard_shortcuts(self, q_current, f_current, keys_pressed):
         """Handle keyboard shortcuts with proper press/release detection"""
         # Handle Q key (drop item)
-        if q_pressed and not hasattr(self, "_last_q_pressed"):
+        q_just_pressed, _ = self._detect_key_edge("q_action", q_current)
+        if q_just_pressed:
+            print("Q pressed detected! (Drop item)")
             self.handle_drop_item()
-            self._last_q_pressed = True
-        elif not q_pressed and hasattr(self, "_last_q_pressed"):
-            delattr(self, "_last_q_pressed")
 
         # Handle F key (swap hands)
-        if f_pressed and not hasattr(self, "_last_f_pressed"):
+        f_just_pressed, _ = self._detect_key_edge("f_action", f_current)
+        if f_just_pressed:
+            print("F pressed detected! (Swap hands)")
             self.handle_swap_hands()
-            self._last_f_pressed = True
-        elif not f_pressed and hasattr(self, "_last_f_pressed"):
-            delattr(self, "_last_f_pressed")
 
         # Handle hotbar keys (1-9)
         hotbar_keys = [
@@ -989,21 +1027,19 @@ class MinecraftController:
             pygame.K_9,
         ]
         for i, key in enumerate(hotbar_keys):
-            key_pressed = keys_pressed[key]
-            last_key_attr = f"_last_hotbar_{i}_pressed"
-            if key_pressed and not hasattr(self, last_key_attr):
+            key_current = keys_pressed[key]
+            key_just_pressed, _ = self._detect_key_edge(f"hotbar_{i}", key_current)
+            if key_just_pressed:
+                print(f"Hotbar key {i + 1} pressed!")
                 self.handle_hotbar_slot(i)
-                setattr(self, last_key_attr, True)
-            elif not key_pressed and hasattr(self, last_key_attr):
-                delattr(self, last_key_attr)
 
         # Handle C key (clear path)
-        c_pressed = keys_pressed[pygame.K_c]
-        if c_pressed and not hasattr(self, "_last_c_pressed"):
+        c_current = keys_pressed[pygame.K_c]
+        self._key_states["c"] = c_current
+        c_just_pressed, _ = self._detect_key_edge("c_action", c_current)
+        if c_just_pressed:
+            print("Look path cleared with C key!")
             self.handle_clear_path()
-            self._last_c_pressed = True
-        elif not c_pressed and hasattr(self, "_last_c_pressed"):
-            delattr(self, "_last_c_pressed")
 
     async def animation_loop(self):
         """Main animation loop following asyncio_pygame_example.py pattern"""
@@ -1033,10 +1069,14 @@ class MinecraftController:
             mouse_pressed = pygame.mouse.get_pressed()[0]
             keys_pressed = pygame.key.get_pressed()
 
-            keyboard_move_x, keyboard_move_y = self.keyboard_movement.handle_keyboard(keys_pressed)
+            keyboard_move_x, keyboard_move_y = self.keyboard_movement.handle_keyboard(
+                keys_pressed
+            )
 
             # Handle movement
-            joystick_move_x, joystick_move_y = self.movement_joystick.handle_mouse(mouse_pos, mouse_pressed)
+            joystick_move_x, joystick_move_y = self.movement_joystick.handle_mouse(
+                mouse_pos, mouse_pressed
+            )
             if abs(joystick_move_x) < 0.1 and abs(joystick_move_y) < 0.1:
                 self.handle_movement(keyboard_move_x, keyboard_move_y)
             else:
@@ -1044,6 +1084,10 @@ class MinecraftController:
 
             # Handle camera look
             delta_x, delta_y = self.camera_area.handle_mouse(mouse_pos, mouse_pressed)
+
+            # Track mouse click-and-drag state changes for camera look
+            self._handle_camera_drag_state(mouse_pressed)
+
             self.handle_camera_look(delta_x, delta_y)
 
             # Handle all buttons and controls
@@ -1121,4 +1165,3 @@ class MinecraftController:
                 print("⚠️ No actions to save in this step")
         else:
             print("⚠️ Demonstration saving only available in MCP mode")
-
