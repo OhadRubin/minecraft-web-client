@@ -97,6 +97,9 @@ class MinecraftController:
             "sprint": {"active": False},
         }
 
+        # MCP mode movement tracking
+        self.last_moved_in_mcp_mode = 0
+
         self.font = pygame.font.Font(None, 36)
         self.small_font = pygame.font.Font(None, 24)
 
@@ -446,15 +449,14 @@ class MinecraftController:
 
             else:  # mcp mode
                 # Convert movement to walk command
-                if abs(movement_x) > 0.1 or abs(movement_z) > 0.1:
+                # if abs(movement_x) > 0.1 or abs(movement_z) > 0.1:
+                # Only send walk command if enough time has passed (avoid spamming)
+                if time.time() - self.last_moved_in_mcp_mode > 2:
                     # Calculate duration based on movement magnitude
                     magnitude = (movement_x**2 + movement_z**2) ** 0.5
-                    duration = int(magnitude * 2000)  # Scale to reasonable duration
-                    self.handle_other_commands(
-                        "walk",
-                        duration=duration,
-                        direction={"x": movement_x, "z": movement_z},
-                    )
+                    duration = int(magnitude * 20000)  # Scale to reasonable duration
+                    self.handle_other_commands("walk", duration=1000)
+                    self.last_moved_in_mcp_mode = time.time()
 
             self.last_movement = (movement_x, movement_z)
 
