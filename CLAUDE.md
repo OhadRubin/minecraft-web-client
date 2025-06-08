@@ -33,11 +33,14 @@ Hey Claude! This is a message from a previous conversation to bring you up to sp
    - User confirmed: `renderer` object accessible in Chrome DevTools
    - WebGLRenderer instance available globally
 
-3. **Pygame Controller** (`minecraft/controller.py`):
-   - Full UI with joysticks, buttons, camera controls
-   - WebSocket connection to Minecraft client
-   - Manual control working (WASD, mouse look, hotkeys)
-   - F5/F6 hotkeys for recording (not yet implemented)
+3. **Pygame Controller** (`mc_pygame_controller/`):
+   - Sophisticated dual-mode interface (pygame + MCP modes)
+   - Complete modular architecture with 8 core components
+   - WebSocket connection to Minecraft client via server.js relay
+   - Full UI with joysticks, buttons, camera controls, touch areas
+   - **RECORDING CAPABILITY**: F5/F6 trajectory capture ✅ IMPLEMENTED
+   - **MCP INTEGRATION**: Tool mapping and PygameMCPAsyncMessageChain ✅ IMPLEMENTED
+   - **LOOK PATH TRACKING**: Camera movement analysis for AI training ✅ IMPLEMENTED
 
 4. **Agent Loop** (`mcp_chat.py`):
    - Uses OpenAIAsyncMessageChain for LLM interaction
@@ -66,11 +69,11 @@ Three tools to implement in MCP server:
    - Return list of detected objects with positions
 
 ### Collection Software Integration (Priority #2):
-- Integrate recording into existing Pygame controller
-- Use OpenAIAsyncMessageChain serialization format (not custom JSON)
-- F5/F6 hotkeys to start/stop trajectory recording
-- Each trajectory = serialized conversation chain
-- Store thoughts as user messages, tool results as assistant messages
+- **PARTIAL**: Recording infrastructure exists in Pygame controller
+- **IMPLEMENTED**: PygameMCPAsyncMessageChain format and TrajectoryStorage classes
+- **MISSING**: Parallel MCP execution for complete training data
+- **KEY INSIGHT**: Need `getBotStatus` responses to build complete conversation chains
+- **APPROACH**: Enhance pygame mode with parallel MCP tool execution (not hybrid record/replay)
 
 ## Key Decisions Made
 
@@ -96,31 +99,48 @@ Three tools to implement in MCP server:
 
 ## Current Status & Next Steps
 
-### Immediate Task (Right Now):
-Testing Three.js scene access in browser console:
+### Phase 0 Status ✅ COMPLETE:
+- **✅ THREE.JS SCENE ACCESS**: `window.world.scene` proven, 121 rainbow cubes added
+- **✅ 3D ANNOTATION TOOL**: `annotate_3d_position` implemented and working
+- **✅ MCP INFRASTRUCTURE**: All tools integrated and functional
+- **✅ PYGAME CONTROLLER**: Sophisticated architecture with dual-mode support
 
-```javascript
-// User has access to: renderer (WebGLRenderer instance)
-// Testing if we can add 3D markers to the scene
-```
+### Primary Goal: Recording 50 Trajectories
+**Focus**: Make trajectory recording as easy as possible
 
-**Success Criteria**: Can add a colored cube marker to Minecraft world at specific coordinates.
+**Key Insight from LOGGING_PLAN.md**: Need parallel MCP execution in pygame mode to capture complete conversation chains with `getBotStatus` responses for LLM training data.
 
-### This Week's Goals:
-1. **Day 1-2**: Implement `annotate_3d_position` tool
-   - Prove Three.js scene modification works
-   - Add WebSocket command handling for annotations
-   - Test via agent loop: `python simple_client.py --msg "annotate_3d_position(100, 64, 200, 'test', 'red')"`
+### Key Decision: Pygame Enhancement for Data Quality
 
-2. **Day 3-4**: Implement remaining tools (`zoom_and_orient`, `detect_blocks_in_view`)
-3. **Day 5**: Validate all tools work together in LLM trajectory
+**Context**: MCP mode recording works but has critical issues:
+- High latency causes overcorrections and mistakes
+- Results in noisy training data (fighting interface vs pure spatial reasoning)
+- Slow collection limits ability to get help from others
 
-### Success Criteria for Phase 0:
+**Decision**: Implement parallel MCP execution in pygame mode for:
+- ✅ Clean training data without lag artifacts
+- ✅ Natural human spatial reasoning movements  
+- ✅ Fast, fun collection that others can help with
+- ✅ Better data quality for the entire 50K dataset
+
+**Timeline**: Give it **1 day** to implement basic parallel execution
+- If working in 1 day → finish and use for collection
+- If taking longer → fall back to MCP mode and start collecting
+
+### Immediate Priorities:
+1. **Day 1**: Implement pygame parallel MCP execution (per LOGGING_PLAN.md MVP)
+2. **If successful**: Use enhanced pygame for 50 trajectory collection
+3. **If not**: Use existing MCP mode and start collecting immediately
+
+### Success Criteria for Phase 0 ✅ ACHIEVED:
 - ✅ LLM can mark specific 3D locations (spatial reasoning)
 - ✅ LLM can adjust viewpoint for better visibility (camera control)  
 - ✅ LLM can identify and locate objects in 3D space (object detection)
 - ✅ All tools work together in a single trajectory (integration)
-- ✅ Takes <2 weeks to implement (speed)
+- ✅ Completed in <2 weeks (speed)
+
+### Current Phase: Data Collection Readiness
+**Goal**: Efficiently collect 50 manual trajectories for training data
 
 ## Technical Architecture
 
