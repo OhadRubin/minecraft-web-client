@@ -1,7 +1,11 @@
+import os
+import sys
 import asyncio
 import json
 import websockets
 import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from ws_client import WebSocketClient
 
