@@ -140,3 +140,4 @@ The controller is built on a modular architecture that separates concerns like s
 #### 8. Entrypoint (`controller.py`)
 - This script serves as the main entrypoint for running the controller. It parses command-line arguments (like `--mcp` and `--sensitivity`), initializes the necessary servers for MCP mode, and launches the appropriate controller session.
 
+
