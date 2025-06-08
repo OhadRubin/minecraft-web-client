@@ -125,25 +125,11 @@ class MinecraftController:
             return None
 
     async def initialize_data_collection_async(self):
-        """Initialize MCP server and async execution for data collection."""
-        if not self.state.data_collection_enabled or not self.mcp_server:
-            return False
-
-        try:
-            # Initialize MCP server
-            await self.mcp_server.initialize()
-            print("✅ MCP server initialized for data collection")
-
-            # Start async execution in strategy
-            if hasattr(self.strategy, "start_async_execution"):
-                await self.strategy.start_async_execution()
-                print("✅ Async execution started for data collection")
-
-            return True
-
-        except Exception as e:
-            print(f"❌ Failed to initialize data collection: {e}")
-            return False
+        """Legacy method - initialization now handled directly in _run_pygame_async()"""
+        # This method is no longer used since we initialize directly in _run_pygame_async()
+        # following the MCP mode pattern
+        print("💡 Data collection initialization now handled directly in async context")
+        return True
 
     async def cleanup_data_collection_async(self):
         """Cleanup MCP server and async execution for data collection."""
@@ -164,39 +150,12 @@ class MinecraftController:
             print(f"⚠️ Warning during data collection cleanup: {e}")
 
     def start_data_collection_background_init(self):
-        """Start data collection initialization in background thread."""
+        """Background initialization no longer needed - using direct initialization like MCP mode"""
         if not self.state.data_collection_enabled:
             return
 
-        def run_async_init():
-            """Run async initialization in separate thread."""
-            import asyncio
-
-            # Create new event loop for this thread
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            try:
-                # Run initialization
-                success = loop.run_until_complete(
-                    self.initialize_data_collection_async()
-                )
-                if success:
-                    print("🎬 Data collection system ready!")
-                    print("💡 Press F5 to start your first collection session")
-                else:
-                    print("❌ Data collection initialization failed")
-
-            except Exception as e:
-                print(f"❌ Data collection initialization error: {e}")
-            finally:
-                loop.close()
-
-        # Start initialization in background thread
-        import threading
-
-        init_thread = threading.Thread(target=run_async_init, daemon=True)
-        init_thread.start()
+        print("🔧 Data collection will be initialized directly in async context")
+        print("💡 No background thread needed - using MCP mode pattern")
 
     # Property decorators for backward compatibility
     @property
@@ -538,8 +497,17 @@ class MinecraftController:
             print(
                 "Make sure the Minecraft web client server is running on localhost:8081"
             )
-            # Use traditional pygame event loop for pygame mode
-            self._run_pygame_loop()
+
+            # Use async loop when data collection is enabled (like MCP mode)
+            if self.state.data_collection_enabled:
+                print("🔄 Using async loop for data collection compatibility")
+                # This needs to be called from an async context
+                import asyncio
+
+                asyncio.run(self._run_pygame_async())
+            else:
+                # Use traditional pygame event loop for pure pygame mode
+                self._run_pygame_loop()
         else:
             print("Commands will be converted to MCP format and executed via callback")
             print("No WebSocket connection needed in MCP mode")
@@ -552,6 +520,62 @@ class MinecraftController:
             if not self._process_frame():
                 break
             self.clock.tick(FPS)
+
+    async def _run_pygame_async(self):
+        """Async pygame loop for data collection mode - copy MCP mode pattern exactly."""
+        # Initialize MCP server directly in this async context (same as MCP mode)
+        if self.state.data_collection_enabled and self.mcp_server:
+            print("🔧 Initializing MCP server in main async context (like MCP mode)...")
+            try:
+                await self.mcp_server.initialize()
+                print("✅ MCP server initialized successfully")
+
+                # Test getBotStatus directly (same as MCP mode)
+                await self.test_get_bot_status_pygame_startup()
+            except Exception as e:
+                print(f"❌ MCP server initialization failed: {e}")
+                print("💡 Data collection will be disabled for this session")
+                self.state.data_collection_enabled = False
+
+        # Initialize async components after MCP server is ready
+        if hasattr(self.strategy, "start_async_execution"):
+            await self.strategy.start_async_execution()
+            print("✅ Async components initialized")
+
+        # Run the same loop as animation_loop
+        while self.state.running:
+            if not self._process_frame():
+                break
+            # Async frame rate limiting (same as animation_loop)
+            await asyncio.sleep(1 / FPS)
+
+        # Cleanup async components
+        if hasattr(self.strategy, "stop_async_execution"):
+            await self.strategy.stop_async_execution()
+            print("✅ Async components cleaned up")
+
+        # Cleanup MCP server if initialized (same as MCP mode cleanup pattern)
+        if self.state.data_collection_enabled and self.mcp_server:
+            try:
+                await self.mcp_server.cleanup()
+                print("✅ MCP server cleaned up")
+            except Exception as e:
+                print(f"⚠️ Warning during MCP server cleanup: {e}")
+
+    # _wait_for_mcp_server_ready method removed - no longer needed with direct initialization
+
+    async def test_get_bot_status_pygame_startup(self):
+        """Test getBotStatus at startup for pygame mode with data collection - copy MCP mode pattern"""
+        try:
+            print("🧪 Testing getBotStatus at startup (pygame data collection mode)...")
+
+            # Use the MCP server to call getBotStatus directly (same as MCP mode)
+            result = await self.mcp_server.execute_tool("getBotStatus", {})
+            print(f"📊 Pygame startup getBotStatus result: {result}")
+
+        except Exception as e:
+            print(f"❌ Pygame startup getBotStatus failed: {e}")
+            print("💡 This may indicate MCP server connectivity issues")
 
     async def animation_loop(self):
         """Main animation loop for async modes."""

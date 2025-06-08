@@ -205,8 +205,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--sensitivity",
         type=float,
-        default=5.0,
-        help="Mouse sensitivity for MCP mode (pixels per degree, default: 5.0). Lower = more sensitive",
+        default=10.0,
+        help="Mouse sensitivity for MCP mode (pixels per degree, default: 10.0). Lower = more sensitive",
     )
     parser.add_argument(
         "--enable-logging",

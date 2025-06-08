@@ -6,7 +6,7 @@ logic scattered throughout the controller by creating specialized mode handlers.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import time
 import asyncio
 
@@ -70,35 +70,47 @@ class ModeStrategy(ABC):
         """Process continuous state updates for this mode (e.g., button holds)."""
         pass
 
-
+# if we wanted to create a MCPPygameModeStrategy, that would be able to send commands via both the websocket and via MCP, we would need to init it the same way we do with MCP mode right?
 class PygameModeStrategy(ModeStrategy):
     """Strategy for pygame mode - sends WebSocket commands to Minecraft client."""
 
     def __init__(
-        self, controller, mcp_server: Server = None, data_collection_enabled=False
+        self,
+        controller,
+        mcp_server: Optional[Server] = None,
+        data_collection_enabled=False,
     ):
         super().__init__(controller)
         # Track previous movement state for continuous streaming
         self.was_moving = False
 
-        # Use existing Server instead of generic mcp_client
-        self.mcp_server = mcp_server
-        self.data_collection_enabled = data_collection_enabled
+        # This logic now clearly defines the two operational modes of this strategy
+        if mcp_server and data_collection_enabled:
+            # --- HYBRID MODE INITIALIZATION ---
+            print(
+                "🔧 PygameModeStrategy: Initializing in HYBRID mode with live MCP client."
+            )
+            self.mcp_server = mcp_server
+            self.data_collection_enabled = True
+            self.async_executor = AsyncMCPExecutor(mcp_server)
+            self.sequence_tracker = ActionSequenceTracker()
+            self.data_collector = DataCollectionController()
+        else:
+            # --- PURE MODE INITIALIZATION ---
+            print("🔧 PygameModeStrategy: Initializing in PURE WebSocket mode.")
+            self.mcp_server = None
+            self.data_collection_enabled = False
+            self.async_executor = None
+            self.sequence_tracker = None
+            self.data_collector = None
 
         # Phase 1: Simple queue for tracking (maintained for compatibility)
         self._mcp_action_queue = []
 
-        # Phase 2: Use existing infrastructure
-        self.async_executor = AsyncMCPExecutor(mcp_server) if mcp_server else None
-        self.sequence_tracker = ActionSequenceTracker()
-
-        # Phase 3: Add data collection controller
-        self.data_collector = (
-            DataCollectionController() if data_collection_enabled else None
-        )
-
         print(
-            f"🔧 PygameModeStrategy using existing Server infrastructure: data_collection={data_collection_enabled}"
+            f"🔧 PygameModeStrategy: Mode={self.data_collection_enabled and 'HYBRID' or 'PURE'}, "
+            f"Server={'✅' if self.mcp_server else '❌'}, "
+            f"Executor={'✅' if self.async_executor else '❌'}"
         )
 
     def handle_movement(self, x: float, z: float):
@@ -236,16 +248,13 @@ class PygameModeStrategy(ModeStrategy):
         # Phase 2 enhancement: Async execution methods
 
     async def start_async_execution(self):
-        """Start background MCP execution."""
-        if self.async_executor:
-            await self.async_executor.start_background_execution()
+        """Backward compatibility wrapper."""
+        return await self.initialize_async_components()
 
     async def stop_async_execution(self):
-        """✅ Fix Bug #16 & #18: Stop background MCP execution with proper cleanup."""
-        if self.async_executor:
-            await self.async_executor.stop_background_execution()
-
-        # Clean up any remaining active tasks
+        """Backward compatibility wrapper."""
+        await self.cleanup_async_components()
+        # Clean up any remaining active tasks for compatibility
         if hasattr(self, "_active_tasks"):
             remaining_tasks = len(self._active_tasks)
             if remaining_tasks > 0:
@@ -287,7 +296,7 @@ class PygameModeStrategy(ModeStrategy):
         )
 
         # Phase 2: Queue actions using simplified executor with existing Server
-        # ✅ Fix Bug #9: Handle asyncio.create_task in try/except for event loop issues
+        # ✅ Now that everything is in the same async event loop, we can use create_task again
         for mcp_action in mcp_actions:
             action_request = MCPActionRequest(
                 tool=mcp_action["tool"],
@@ -296,7 +305,7 @@ class PygameModeStrategy(ModeStrategy):
                 timestamp=time.time(),
             )
 
-            # ✅ Fix Bug #6: Store task reference to prevent garbage collection
+            # ✅ Simple async task creation (works now that we're in same event loop)
             try:
                 task = asyncio.create_task(
                     self.async_executor.queue_mcp_action(action_request)
@@ -308,7 +317,7 @@ class PygameModeStrategy(ModeStrategy):
                 task.add_done_callback(self._active_tasks.discard)
             except RuntimeError as e:
                 print(f"⚠️ Cannot create async task (no event loop): {e}")
-                print("💡 MCP data collection requires async event loop")
+                print("💡 This should not happen with async pygame mode")
 
     def _handle_sequence_completion(self, sequence_id: str, response) -> None:
         """Handle completion using existing chain infrastructure."""
@@ -407,6 +416,27 @@ class PygameModeStrategy(ModeStrategy):
         if self.data_collector:
             return self.data_collector.get_session_stats()
         return {"status": "data_collection_disabled"}
+
+    async def initialize_async_components(self):
+        """Initialize async components for data collection."""
+        if self.data_collection_enabled and self.async_executor:
+            try:
+                await self.async_executor.start_background_execution()
+                print("✅ Async MCP execution initialized")
+                return True
+            except Exception as e:
+                print(f"❌ Failed to initialize async components: {e}")
+                return False
+        return True
+
+    async def cleanup_async_components(self):
+        """Cleanup async components for data collection."""
+        if self.async_executor:
+            try:
+                await self.async_executor.stop_background_execution()
+                print("✅ Async MCP execution cleaned up")
+            except Exception as e:
+                print(f"⚠️ Warning during async cleanup: {e}")
 
 
 class MCPModeStrategy(ModeStrategy):
