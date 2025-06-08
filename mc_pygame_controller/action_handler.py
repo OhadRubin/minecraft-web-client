@@ -34,17 +34,21 @@ class ActionHandler:
             "right_click": self.handle_right_click,
             "left_click_keyboard": self._handle_left_click_keyboard,
             "right_click_keyboard": self._handle_right_click_keyboard,
-            "jump": self._handle_jump_action, # This is a helper that calls self.handle_jump
-            "jump_keyboard": self._handle_jump_action, # Same helper
+            "jump": self._handle_jump_action,  # This is a helper that calls self.handle_jump
+            "jump_keyboard": self._handle_jump_action,  # Same helper
             "sneak_toggled": self.handle_sneak,
             "sprint_toggled": self.handle_sprint,
             "inventory_pressed": lambda _: self.handle_inventory(),
             "drop_item_pressed": lambda _: self.handle_drop_item(),
             "swap_hands_pressed": lambda _: self.handle_swap_hands(),
             "clear_path_pressed": lambda _: self.handle_clear_path(),
-            "test_status_pressed": lambda _: self.controller.handle_test_status(), # Stays on controller
-            "save_demo_pressed": lambda _: self.controller.handle_save_demonstration(), # Stays on controller
+            "test_status_pressed": lambda _: self.controller.handle_test_status(),  # Stays on controller
+            "save_demo_pressed": lambda _: self.controller.handle_save_demonstration(),  # Stays on controller
             "hotbar_slot_pressed": self.handle_hotbar_slot,
+            # Data collection actions
+            "start_data_collection_session": self.handle_start_data_collection_session,
+            "save_data_collection_session": self.handle_save_data_collection_session,
+            "cancel_data_collection_session": self.handle_cancel_data_collection_session,
         }
 
     # Helper methods for action dispatch dictionary
@@ -341,3 +345,95 @@ class ActionHandler:
         if self.state.enable_logging:
             mcp_command = {"tool": tool, "parameters": parameters}
             print(f"LOGGED: {mcp_command}")
+
+    def handle_start_data_collection_session(self, value=None):
+        """Handle starting a new data collection session (F5 key)"""
+        if not self.state.data_collection_enabled:
+            print("⚠️ Data collection not enabled. Use --data-collection flag.")
+            return
+
+        if self.controller.data_collection_session_active:
+            print("⚠️ Data collection session already active. Save or cancel first.")
+            return
+
+        # Simple task input for MVP - in GUI version this would be a dialog
+        print("📋 Enter task description (or press Enter for default):")
+        task_description = input("> ").strip()
+
+        if not task_description:
+            task_description = "Spatial reasoning task"
+
+        # Start session via strategy
+        if hasattr(self.strategy, "start_data_collection_session"):
+            session_id = self.strategy.start_data_collection_session(task_description)
+            if session_id:
+                self.controller.data_collection_session_active = True
+                self.controller.current_task_description = task_description
+                print(f"🎬 Started data collection session: {session_id}")
+                print(
+                    "💡 Perform your spatial reasoning actions. Press F6 to save when done."
+                )
+
+                # Initialize MCP server if needed
+                if (
+                    hasattr(self.strategy, "async_executor")
+                    and self.strategy.async_executor
+                ):
+                    # Start async execution for MCP data collection
+                    import asyncio
+
+                    try:
+                        loop = asyncio.get_event_loop()
+                        if not loop.is_running():
+                            asyncio.create_task(self.strategy.start_async_execution())
+                        else:
+                            asyncio.ensure_future(self.strategy.start_async_execution())
+                    except Exception as e:
+                        print(f"⚠️ Could not start async execution: {e}")
+            else:
+                print("❌ Failed to start data collection session")
+        else:
+            print("⚠️ Data collection not supported in current mode")
+
+    def handle_save_data_collection_session(self, value=None):
+        """Handle saving the current data collection session (F6 key)"""
+        if not self.state.data_collection_enabled:
+            print("⚠️ Data collection not enabled. Use --data-collection flag.")
+            return
+
+        if not self.controller.data_collection_session_active:
+            print("⚠️ No active data collection session. Press F5 to start one.")
+            return
+
+        # Save session via strategy
+        if hasattr(self.strategy, "save_data_collection_session"):
+            filepath = self.strategy.save_data_collection_session()
+            if filepath:
+                print(f"💾 Data collection session saved to: {filepath}")
+                self.controller.data_collection_session_active = False
+                self.controller.current_task_description = ""
+                print("✅ Ready to start a new session with F5")
+            else:
+                print("❌ Failed to save data collection session")
+        else:
+            print("⚠️ Data collection not supported in current mode")
+
+    def handle_cancel_data_collection_session(self, value=None):
+        """Handle canceling the current data collection session (F7 key)"""
+        if not self.state.data_collection_enabled:
+            print("⚠️ Data collection not enabled. Use --data-collection flag.")
+            return
+
+        if not self.controller.data_collection_session_active:
+            print("⚠️ No active data collection session to cancel.")
+            return
+
+        # Cancel session via strategy
+        if hasattr(self.strategy, "cancel_data_collection_session"):
+            self.strategy.cancel_data_collection_session()
+            self.controller.data_collection_session_active = False
+            self.controller.current_task_description = ""
+            print("❌ Data collection session cancelled")
+            print("💡 Press F5 to start a new session")
+        else:
+            print("⚠️ Data collection not supported in current mode")

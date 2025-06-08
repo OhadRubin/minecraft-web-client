@@ -269,6 +269,27 @@ class UIManager:
             if key_just_pressed:
                 actions.append(("hotbar_slot_pressed", i))
 
+        # Data collection hotkeys (F5/F6/F7)
+        if self.state.data_collection_enabled:
+            f5_current = keys_pressed[pygame.K_F5]
+            f6_current = keys_pressed[pygame.K_F6]
+            f7_current = keys_pressed[pygame.K_F7]
+
+            # F5: Start data collection session
+            f5_just_pressed, _ = self._detect_key_edge("f5_data_collection", f5_current)
+            if f5_just_pressed:
+                actions.append(("start_data_collection_session", None))
+
+            # F6: Save data collection session
+            f6_just_pressed, _ = self._detect_key_edge("f6_data_collection", f6_current)
+            if f6_just_pressed:
+                actions.append(("save_data_collection_session", None))
+
+            # F7: Cancel data collection session
+            f7_just_pressed, _ = self._detect_key_edge("f7_data_collection", f7_current)
+            if f7_just_pressed:
+                actions.append(("cancel_data_collection_session", None))
+
         return actions
 
     def draw(self):

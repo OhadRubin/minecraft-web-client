@@ -16,12 +16,14 @@ try:
     from .action_sequence_tracker import ActionSequenceTracker
     from .mcp_client import Server
     from .chain import PygameMCPAsyncMessageChain
+    from .data_collection_controller import DataCollectionController
 except ImportError:
     # Handle direct script execution
     from async_mcp_executor import AsyncMCPExecutor, MCPActionRequest
     from action_sequence_tracker import ActionSequenceTracker
     from mcp_client import Server
     from chain import PygameMCPAsyncMessageChain
+    from data_collection_controller import DataCollectionController
 
 
 class ModeStrategy(ABC):
@@ -90,6 +92,11 @@ class PygameModeStrategy(ModeStrategy):
         self.async_executor = AsyncMCPExecutor(mcp_server) if mcp_server else None
         self.sequence_tracker = ActionSequenceTracker()
 
+        # Phase 3: Add data collection controller
+        self.data_collector = (
+            DataCollectionController() if data_collection_enabled else None
+        )
+
         print(
             f"🔧 PygameModeStrategy using existing Server infrastructure: data_collection={data_collection_enabled}"
         )
@@ -101,7 +108,8 @@ class PygameModeStrategy(ModeStrategy):
 
         # Phase 2 enhancement: Queue parallel MCP execution for data collection
         if self.data_collection_enabled and self.mcp_server:
-            self._queue_parallel_mcp_execution([command])
+            task_context = getattr(self.controller, "current_task_description", "")
+            self._queue_parallel_mcp_execution([command], task_context)
 
         # Log movement in pygame mode if logging enabled
         if self.controller.enable_logging and (abs(x) > 0.1 or abs(z) > 0.1):
@@ -130,7 +138,8 @@ class PygameModeStrategy(ModeStrategy):
 
         # Phase 2 enhancement: Queue parallel MCP execution for data collection
         if self.data_collection_enabled and self.mcp_server and commands_sent:
-            self._queue_parallel_mcp_execution(commands_sent)
+            task_context = getattr(self.controller, "current_task_description", "")
+            self._queue_parallel_mcp_execution(commands_sent, task_context)
 
         # Log the action in pygame mode
         mcp_params = {"duration": duration, **kwargs}
@@ -147,7 +156,8 @@ class PygameModeStrategy(ModeStrategy):
 
         # Phase 2 enhancement: Queue parallel MCP execution for data collection
         if self.data_collection_enabled and self.mcp_server and command_sent:
-            self._queue_parallel_mcp_execution([command_sent])
+            task_context = getattr(self.controller, "current_task_description", "")
+            self._queue_parallel_mcp_execution([command_sent], task_context)
 
         self.controller.action_handler._log_mcp_command(action_name, {"state": state})
 
@@ -158,7 +168,8 @@ class PygameModeStrategy(ModeStrategy):
 
             # Phase 2 enhancement: Queue parallel MCP execution for data collection
             if self.data_collection_enabled and self.mcp_server:
-                self._queue_parallel_mcp_execution([pygame_cmd])
+                task_context = getattr(self.controller, "current_task_description", "")
+                self._queue_parallel_mcp_execution([pygame_cmd], task_context)
 
         self.controller.action_handler._log_mcp_command(action_name, params)
 
@@ -324,14 +335,38 @@ class PygameModeStrategy(ModeStrategy):
                 )
 
                 if chain:
-                    # Save in format ready for training
+                    # Convert chain to JSON format for data collection
                     chain_json = chain.to_json()
                     print(
                         f"💾 Built conversation chain: {len(chain.messages)} messages"
                     )
 
-                    # TODO Phase 3: Save to file using existing format
-                    print(f"🎬 Conversation ready for spatial reasoning training data")
+                    # Phase 3: Save to data collector if available
+                    if self.data_collector and self.data_collector.current_session:
+                        # Create conversation data structure
+                        conversation_data = {
+                            "conversation_id": f"conv_{sequence_id}",
+                            "task_description": completed_sequence.task_context,
+                            "start_time": completed_sequence.start_time,
+                            "end_time": completed_sequence.end_time,
+                            "duration": completed_sequence.end_time
+                            - completed_sequence.start_time,
+                            "messages": chain_json.get("messages", []),
+                            "sequence_metadata": {
+                                "pygame_actions": len(
+                                    completed_sequence.pygame_actions
+                                ),
+                                "mcp_responses": len(completed_sequence.mcp_responses),
+                                "sequence_id": sequence_id,
+                            },
+                        }
+
+                        self.data_collector.add_completed_sequence(conversation_data)
+                        print(f"🎬 Added to data collection session")
+                    else:
+                        print(
+                            f"🎬 Conversation ready for spatial reasoning training data"
+                        )
 
                 print(f"✅ Sequence {sequence_id} completed and processed")
 
@@ -345,6 +380,33 @@ class PygameModeStrategy(ModeStrategy):
         from .action_converter import ActionConverter
 
         return ActionConverter.pygame_to_mcp_simple(pygame_actions)
+
+    def start_data_collection_session(self, task_description: str) -> str:
+        """Start a new data collection session."""
+        if not self.data_collector:
+            print("⚠️ Data collection not enabled for this strategy.")
+            return None
+
+        return self.data_collector.start_collection_session(task_description)
+
+    def save_data_collection_session(self) -> str:
+        """Save the current data collection session."""
+        if self.data_collector:
+            return self.data_collector.save_session()
+        return None
+
+    def cancel_data_collection_session(self) -> None:
+        """Cancel the current data collection session."""
+        if self.data_collector:
+            self.data_collector.cancel_session()
+        else:
+            print("⚠️ No data collection session to cancel.")
+
+    def get_session_stats(self) -> Dict[str, Any]:
+        """Get current session statistics."""
+        if self.data_collector:
+            return self.data_collector.get_session_stats()
+        return {"status": "data_collection_disabled"}
 
 
 class MCPModeStrategy(ModeStrategy):

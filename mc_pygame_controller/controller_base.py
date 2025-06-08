@@ -28,13 +28,19 @@ import argparse
 class MinecraftController:
 
     def __init__(
-        self, mode="pygame", chain_args=None, sensitivity=5.0, enable_logging=False
+        self,
+        mode="pygame",
+        chain_args=None,
+        sensitivity=5.0,
+        enable_logging=False,
+        data_collection_enabled=False,
     ):
         # Initialize centralized state
         self.state = ControllerState(
             mode=mode,
             sensitivity=sensitivity,
-            enable_logging=enable_logging
+            enable_logging=enable_logging,
+            data_collection_enabled=data_collection_enabled,
         )
 
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
@@ -49,6 +55,7 @@ class MinecraftController:
             1230, 50, 350, 300
         )  # Right side visualization
 
+        # Set up servers and chain
         if chain_args is not None:
             self.state.chain = chain_args[1]
             self.state.servers = chain_args[0]
@@ -56,13 +63,20 @@ class MinecraftController:
             self.state.servers = []
             self.state.chain = None
 
+        # Set up MCP server for data collection in pygame mode
+        self.mcp_server = None
+        if self.state.mode == "pygame" and self.state.data_collection_enabled:
+            self.mcp_server = self._create_mcp_server_for_data_collection()
+
         # Connect LookPathTracker for MCP mode
         if self.state.mode == "mcp":
             self.look_path_tracker.set_execution_callback(self.execute_mcp_action)
 
-        # Initialize mode strategy
+        # Initialize mode strategy with data collection support
         if self.state.mode == "pygame":
-            self.strategy = PygameModeStrategy(self)
+            self.strategy = PygameModeStrategy(
+                self, self.mcp_server, self.state.data_collection_enabled
+            )
         elif self.state.mode == "mcp":
             self.strategy = MCPModeStrategy(self)
         else:
@@ -73,6 +87,116 @@ class MinecraftController:
 
         # Initialize Action Handler
         self.action_handler = ActionHandler(self.state, self.strategy, self)
+
+        # Data collection state
+        self.data_collection_session_active = False
+        self.current_task_description = ""
+
+        # Print data collection status
+        if self.state.data_collection_enabled:
+            print("🎬 Data collection enabled!")
+            print("📋 Hotkeys: F5=Start session | F6=Save session | F7=Cancel session")
+            print("💡 This will capture spatial reasoning data for AI training")
+
+    def _create_mcp_server_for_data_collection(self):
+        """Create MCP server for data collection in pygame mode."""
+        try:
+            from .mcp_client import Server
+
+            # Use the same server configuration as MCP mode
+            server_config = {
+                "command": "npx",
+                "args": [
+                    "tsx",
+                    "/Users/ohadr/minecraft-web-client/minecraft-mcp-server.ts",
+                    "--transport",
+                    "stdio",
+                ],
+                "env": {"NODE_NO_WARNINGS": "1"},
+            }
+
+            server = Server("minecraft-data-collection", server_config)
+            print("🔧 Created MCP server for data collection")
+            return server
+
+        except Exception as e:
+            print(f"⚠️ Could not create MCP server for data collection: {e}")
+            print("💡 Data collection will be disabled")
+            return None
+
+    async def initialize_data_collection_async(self):
+        """Initialize MCP server and async execution for data collection."""
+        if not self.state.data_collection_enabled or not self.mcp_server:
+            return False
+
+        try:
+            # Initialize MCP server
+            await self.mcp_server.initialize()
+            print("✅ MCP server initialized for data collection")
+
+            # Start async execution in strategy
+            if hasattr(self.strategy, "start_async_execution"):
+                await self.strategy.start_async_execution()
+                print("✅ Async execution started for data collection")
+
+            return True
+
+        except Exception as e:
+            print(f"❌ Failed to initialize data collection: {e}")
+            return False
+
+    async def cleanup_data_collection_async(self):
+        """Cleanup MCP server and async execution for data collection."""
+        if not self.mcp_server:
+            return
+
+        try:
+            # Stop async execution in strategy
+            if hasattr(self.strategy, "stop_async_execution"):
+                await self.strategy.stop_async_execution()
+                print("✅ Async execution stopped")
+
+            # Cleanup MCP server
+            await self.mcp_server.cleanup()
+            print("✅ MCP server cleaned up")
+
+        except Exception as e:
+            print(f"⚠️ Warning during data collection cleanup: {e}")
+
+    def start_data_collection_background_init(self):
+        """Start data collection initialization in background thread."""
+        if not self.state.data_collection_enabled:
+            return
+
+        def run_async_init():
+            """Run async initialization in separate thread."""
+            import asyncio
+
+            # Create new event loop for this thread
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            try:
+                # Run initialization
+                success = loop.run_until_complete(
+                    self.initialize_data_collection_async()
+                )
+                if success:
+                    print("🎬 Data collection system ready!")
+                    print("💡 Press F5 to start your first collection session")
+                else:
+                    print("❌ Data collection initialization failed")
+
+            except Exception as e:
+                print(f"❌ Data collection initialization error: {e}")
+            finally:
+                loop.close()
+
+        # Start initialization in background thread
+        import threading
+
+        init_thread = threading.Thread(target=run_async_init, daemon=True)
+        init_thread.start()
 
     # Property decorators for backward compatibility
     @property
@@ -404,6 +528,10 @@ class MinecraftController:
 
         # Initialize connection using strategy
         self.strategy.connect()
+
+        # Start data collection initialization if enabled
+        if self.state.data_collection_enabled:
+            self.start_data_collection_background_init()
 
         if self.state.mode == "pygame":
             print("Commands will be forwarded to the Minecraft bot")

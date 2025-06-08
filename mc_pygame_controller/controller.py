@@ -214,6 +214,11 @@ if __name__ == "__main__":
         default=True,
         help="Enable logging of pygame commands in MCP format (for data collection)",
     )
+    parser.add_argument(
+        "--data-collection",
+        action="store_true",
+        help="Enable parallel MCP data collection in pygame mode for AI training data",
+    )
     args = parser.parse_args()
 
     # Determine mode
@@ -221,7 +226,11 @@ if __name__ == "__main__":
 
     # Create and run controller
     if mode == "pygame":
-        controller = MinecraftController(mode=mode, enable_logging=getattr(args, 'enable_logging', False))
+        controller = MinecraftController(
+            mode=mode,
+            enable_logging=getattr(args, "enable_logging", False),
+            data_collection_enabled=args.data_collection,
+        )
         controller.run()
     else:
         async def runner():
