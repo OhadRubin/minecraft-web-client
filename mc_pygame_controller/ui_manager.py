@@ -155,10 +155,6 @@ class UIManager:
         if delta_x != 0 or delta_y != 0:
             actions.append(("camera_look", (delta_x, delta_y)))
 
-        # Handle mouse drag state changes for camera
-        camera_is_clicking = self.camera_area.is_touching and mouse_pressed
-        actions.append(("camera_drag_state", (mouse_pressed, camera_is_clicking)))
-
         # Handle action buttons
         if self.left_click_btn.handle_mouse(mouse_pos, mouse_pressed):
             pass  # Handle on hold/release

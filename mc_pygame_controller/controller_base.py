@@ -21,6 +21,7 @@ from .ui_elements import (
 from .mode_strategy import ModeStrategy, PygameModeStrategy, MCPModeStrategy
 from .ui_manager import UIManager
 from .controller_state import ControllerState
+from mc_pygame_controller.camera_drag_handler import CameraDragHandler
 import argparse
 
 
@@ -70,13 +71,13 @@ class MinecraftController:
         # Initialize UI Manager
         self.ui_manager = UIManager(self.screen, self.state, self.look_path_tracker, self.look_visualization)
 
+        # Instantiate CameraDragHandler
+        self.camera_drag_handler = CameraDragHandler(self.look_path_tracker)
+
         # Initialize action dispatch dictionary for cleaner action handling
         self._action_handlers = {
             "movement": lambda v: self.handle_movement(v[0], v[1]) if v else None,
             "camera_look": lambda v: self.handle_camera_look(v[0], v[1]) if v else None,
-            "camera_drag_state": lambda v: (
-                self._handle_camera_drag_state(v[0]) if v else None
-            ),
             "left_click": self.handle_left_click,
             "right_click": self.handle_right_click,
             "left_click_keyboard": self._handle_left_click_keyboard,
@@ -332,25 +333,6 @@ class MinecraftController:
         just_released = not current_state and last_state
 
         return just_pressed, just_released
-
-    def _handle_camera_drag_state(self, mouse_pressed: bool):
-        """Handle camera drag state changes for look tracking"""
-        camera_is_clicking = self.ui_manager.camera_area.is_touching and mouse_pressed
-        prev_clicking = getattr(self, "camera_was_clicking", False)
-
-        if camera_is_clicking != prev_clicking:
-            print(
-                f"🔍 Camera state change: clicking={camera_is_clicking}, was_clicking={prev_clicking}"
-            )
-
-        if camera_is_clicking and not prev_clicking:
-            print("🖱️ Mouse pressed in camera area - starting drag tracking")
-            self.look_path_tracker.start_mouse_tracking()
-            self.camera_was_clicking = True
-        elif not mouse_pressed and prev_clicking:
-            print("🖱️ Mouse released - ending drag tracking")
-            self.look_path_tracker.stop_mouse_tracking()
-            self.camera_was_clicking = False
 
     async def connect_websocket(self):
         try:
@@ -628,8 +610,15 @@ class MinecraftController:
 
         # Get current input state
         mouse_pos = pygame.mouse.get_pos()
-        mouse_pressed = pygame.mouse.get_pressed()[0]  # Left click
+        mouse_pressed_buttons = pygame.mouse.get_pressed()
+        mouse_pressed = mouse_pressed_buttons[0]  # Left click for UIManager and other existing logic
         keys_pressed = pygame.key.get_pressed()
+
+        # New camera drag handling
+        scaled_mouse_pos = self.ui_manager.get_scaled_mouse_pos(mouse_pos)
+        is_in_cam_area = self.ui_manager.camera_area.is_touching(scaled_mouse_pos)
+        # mouse_pressed_buttons[0] is the left mouse button state
+        self.camera_drag_handler.update(is_in_cam_area, mouse_pressed_buttons[0])
 
         # Process all inputs through UIManager (discrete actions)
         ui_actions = self.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed)
