@@ -5,6 +5,7 @@ Test script for Phase 1 PygameModeStrategy Enhancement
 Tests the enhanced PygameModeStrategy with MCP integration capabilities.
 """
 
+__test__ = False
 import sys
 import os
 
