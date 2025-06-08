@@ -1,0 +1,43 @@
+{
+  "session_id": "session_complex",
+  "start_time": 0,
+  "end_time": 25,
+  "conversations": [
+    {
+      "conversation_id": "conv_0",
+      "task_description": "Mine and build",
+      "start_time": 0,
+      "end_time": 15,
+      "duration": 15,
+      "messages": [
+        {"role": "user", "content": "Mine some stone"},
+        {
+          "role": "assistant",
+          "content": "I'll mine the stone",
+          "tool_calls": [
+            {"id": "call_mine","type": "function","function": {"name": "leftClick", "arguments": "{\"duration\":1000}"}}
+          ]
+        },
+        {"role": "tool", "content": "{\"mined\": true}", "tool_call_id": "call_mine"}
+      ]
+    },
+    {
+      "conversation_id": "conv_1",
+      "task_description": "Place a block",
+      "start_time": 16,
+      "end_time": 25,
+      "duration": 9,
+      "messages": [
+        {"role": "user", "content": "Place block"},
+        {
+          "role": "assistant",
+          "content": "Placing block",
+          "tool_calls": [
+            {"id": "call_place","type": "function","function": {"name": "rightClick", "arguments": "{}"}}
+          ]
+        },
+        {"role": "tool", "content": "{\"placed\": true}", "tool_call_id": "call_place"}
+      ]
+    }
+  ]
+}
