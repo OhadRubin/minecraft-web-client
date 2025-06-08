@@ -273,14 +273,22 @@ class PygameModeStrategy(ModeStrategy):
 
         # Phase 1: Still maintain simple queue for compatibility
         mcp_actions = self._convert_actions_to_mcp_format(actions)
+        print(
+            f"🔄 Converted {len(actions)} pygame actions to {len(mcp_actions)} MCP actions"
+        )
         for mcp_action in mcp_actions:
             self._mcp_action_queue.append(mcp_action)
 
         # Always add getBotStatus for complete state capture
         mcp_actions.append({"tool": "getBotStatus", "parameters": {}})
 
-        # Phase 2: Start tracking this action sequence
-        sequence_id = self.sequence_tracker.start_sequence(actions, task_context)
+        # Phase 2: Start tracking this action sequence with correct expected count
+        sequence_id = self.sequence_tracker.start_sequence(
+            actions, task_context, len(mcp_actions)
+        )
+        print(
+            f"🎯 Expecting {len(mcp_actions)} total responses for sequence {sequence_id}"
+        )
 
         # ✅ Fix Bug #7 & #20: Create proper closure to capture sequence_id
         def create_response_handler(seq_id):
@@ -344,34 +352,76 @@ class PygameModeStrategy(ModeStrategy):
                 )
 
                 if chain:
-                    # Convert chain to JSON format for data collection
-                    chain_json = chain.to_json()
                     print(
                         f"💾 Built conversation chain: {len(chain.messages)} messages"
                     )
 
                     # Phase 3: Save to data collector if available
                     if self.data_collector and self.data_collector.current_session:
-                        # Create conversation data structure
-                        conversation_data = {
-                            "conversation_id": f"conv_{sequence_id}",
-                            "task_description": completed_sequence.task_context,
-                            "start_time": completed_sequence.start_time,
-                            "end_time": completed_sequence.end_time,
-                            "duration": completed_sequence.end_time
-                            - completed_sequence.start_time,
-                            "messages": chain_json.get("messages", []),
-                            "sequence_metadata": {
-                                "pygame_actions": len(
-                                    completed_sequence.pygame_actions
-                                ),
-                                "mcp_responses": len(completed_sequence.mcp_responses),
-                                "sequence_id": sequence_id,
-                            },
-                        }
+                        try:
+                            # Convert chain to serializable format safely
+                            chain_dict = chain.to_dict()
 
-                        self.data_collector.add_completed_sequence(conversation_data)
-                        print(f"🎬 Added to data collection session")
+                            # Create conversation data structure
+                            conversation_data = {
+                                "conversation_id": f"conv_{sequence_id}",
+                                "task_description": completed_sequence.task_context,
+                                "start_time": completed_sequence.start_time,
+                                "end_time": completed_sequence.end_time,
+                                "duration": completed_sequence.end_time
+                                - completed_sequence.start_time,
+                                "messages": chain_dict.get("messages", []),
+                                "sequence_metadata": {
+                                    "pygame_actions": len(
+                                        completed_sequence.pygame_actions
+                                    ),
+                                    "mcp_responses": len(
+                                        completed_sequence.mcp_responses
+                                    ),
+                                    "sequence_id": sequence_id,
+                                },
+                            }
+
+                            self.data_collector.add_completed_sequence(
+                                conversation_data
+                            )
+                            print(f"🎬 Added to data collection session")
+
+                        except TypeError as e:
+                            print(f"⚠️ JSON serialization error: {e}")
+                            print("💡 Saving simplified conversation data instead")
+
+                            # Fallback: save simplified data without full chain
+                            simplified_data = {
+                                "conversation_id": f"conv_{sequence_id}",
+                                "task_description": completed_sequence.task_context,
+                                "start_time": completed_sequence.start_time,
+                                "end_time": completed_sequence.end_time,
+                                "duration": completed_sequence.end_time
+                                - completed_sequence.start_time,
+                                "pygame_actions": completed_sequence.pygame_actions,
+                                "mcp_responses": [
+                                    {
+                                        "tool": resp.get("tool", "unknown"),
+                                        "content": str(resp.get("content", "")),
+                                        "timestamp": resp.get("timestamp", time.time()),
+                                    }
+                                    for resp in completed_sequence.mcp_responses
+                                ],
+                                "sequence_metadata": {
+                                    "pygame_actions": len(
+                                        completed_sequence.pygame_actions
+                                    ),
+                                    "mcp_responses": len(
+                                        completed_sequence.mcp_responses
+                                    ),
+                                    "sequence_id": sequence_id,
+                                    "error": "JSON serialization failed - using simplified format",
+                                },
+                            }
+
+                            self.data_collector.add_completed_sequence(simplified_data)
+                            print(f"🎬 Added simplified data to collection session")
                     else:
                         print(
                             f"🎬 Conversation ready for spatial reasoning training data"

@@ -21,6 +21,7 @@ class ActionSequence:
     end_time: float = 0.0
     mcp_responses: List[dict] = field(default_factory=list)
     status: str = "pending"  # pending, executing, completed, failed
+    expected_responses: int = 1  # Expected number of MCP responses
 
 
 class ActionSequenceTracker:
@@ -31,23 +32,33 @@ class ActionSequenceTracker:
         self.active_sequences: Dict[str, ActionSequence] = {}
 
     def start_sequence(
-        self, pygame_actions: List[Dict[str, Any]], task_context: str = ""
+        self,
+        pygame_actions: List[Dict[str, Any]],
+        task_context: str = "",
+        expected_responses: int = None,
     ) -> str:
         """Start tracking a new action sequence."""
         # ✅ Fix Bug #12: Add microseconds to prevent ID collision
         sequence_id = f"seq_{self.current_sequence_id}_{int(time.time())}_{int(time.time() * 1000000) % 1000000}"
         self.current_sequence_id += 1
 
+        # Calculate expected responses if not provided
+        if expected_responses is None:
+            expected_responses = (
+                len(pygame_actions) + 1
+            )  # +1 for getBotStatus (fallback)
+
         sequence = ActionSequence(
             sequence_id=sequence_id,
             pygame_actions=pygame_actions.copy(),
             task_context=task_context,
             start_time=time.time(),
+            expected_responses=expected_responses,
         )
 
         self.active_sequences[sequence_id] = sequence
         print(
-            f"🎬 Started tracking sequence {sequence_id} with {len(pygame_actions)} actions"
+            f"🎬 Started tracking sequence {sequence_id} with {len(pygame_actions)} pygame actions, expecting {expected_responses} MCP responses"
         )
         return sequence_id
 
@@ -190,12 +201,16 @@ class ActionSequenceTracker:
 
         sequence = self.active_sequences[sequence_id]
 
-        # If expected_responses not specified, consider complete when we have at least 1 response
-        # and it's been more than 1 second since the last response
+        # Use stored expected responses count
         if expected_responses is None:
-            if len(sequence.mcp_responses) == 0:
-                return False
-            # Check if enough time has passed since start (simple heuristic)
-            return time.time() - sequence.start_time > 2.0
+            expected_responses = sequence.expected_responses
 
-        return len(sequence.mcp_responses) >= expected_responses
+        # Only complete when we have all expected responses
+        is_complete = len(sequence.mcp_responses) >= expected_responses
+
+        if is_complete:
+            print(
+                f"🎯 Sequence {sequence_id} complete: {len(sequence.mcp_responses)}/{expected_responses} responses"
+            )
+
+        return is_complete

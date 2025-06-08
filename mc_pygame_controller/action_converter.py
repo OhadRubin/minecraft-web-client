@@ -46,7 +46,10 @@ class ActionConverter:
         elif action_type == "look":
             return ActionConverter._convert_look_action(action)
         elif action_type == "documentMouseEvent" and action.get("button") == 0:
-            return ActionConverter._convert_left_click_action(action)
+            # Only convert mouse down events, skip mouse up events to avoid duplicates
+            if action.get("action") == "down":
+                return ActionConverter._convert_left_click_action(action)
+            return None
         elif action_type == "rightDown":
             return ActionConverter._convert_right_click_action(action)
 
