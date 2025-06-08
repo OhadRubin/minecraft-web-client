@@ -69,3 +69,7 @@ class ControllerState:
     event_queue: Optional[Any] = None
     command_queue: Optional[Any] = None
     result_queue: Optional[Any] = None
+    
+    # Additional state that was scattered in controller
+    chain: Optional[Any] = None
+    servers: list = field(default_factory=list)

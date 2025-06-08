@@ -1,16 +1,3 @@
-"""
-Minecraft Web Client Controller - Refactored for DRY Principles
-
-Major refactoring improvements:
-1. Eliminated code duplication in click/action handlers using generic _handle_timed_action and _handle_toggle_action
-2. Centralized keyboard edge detection with _detect_key_edge method
-3. Unified logging with _log_mcp_command utility
-4. Updated duration mapping to match MCP server capabilities (very_short to very_very_long)
-5. Consolidated UI initialization into _init_ui_buttons and _init_hotbar_buttons
-6. Refactored keyboard handling into reusable _handle_keyboard_shortcuts method
-7. Extracted camera drag handling into _handle_camera_drag_state method
-8. Simplified state management with dictionaries instead of individual attributes
-"""
 
 import asyncio
 import json
@@ -50,67 +37,196 @@ class MinecraftController:
             enable_logging=enable_logging
         )
         
-        # For backward compatibility, keep direct access to commonly used properties
-        self.mode = self.state.mode
-        self.sensitivity = self.state.sensitivity
-        self.enable_logging = self.state.enable_logging
-        self.running = self.state.running
-        
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Minecraft Web Client Controller")
         self.clock = pygame.time.Clock()
 
         # Look path tracking
         self.look_path_tracker = LookPathTracker(
-            sensitivity=sensitivity, enable_logging=enable_logging, mode=mode
+            sensitivity=self.state.sensitivity, enable_logging=self.state.enable_logging, mode=self.state.mode
         )
         self.look_visualization = LookPathVisualizationArea(
             1230, 50, 350, 300
         )  # Right side visualization
 
         if chain_args is not None:
-            self.chain = chain_args[1]
-            self.servers = chain_args[0]
+            self.state.chain = chain_args[1]
+            self.state.servers = chain_args[0]
         else:
-            self.servers = []
-            self.chain = None
-
-        # For backward compatibility, provide direct access to state properties
-        self.current_hotbar_slot = 0  # Will be updated to use state
-        self.last_hotbar_slot = -1  # Will be updated to use state
-        self.websocket = None  # Will be updated to use state
-        self.connected = False  # Will be updated to use state
-        self.connection_thread = None  # Will be updated to use state
-        self.loop = None  # Will be updated to use state
-        self.last_movement = (0.0, 0.0)  # Will be updated to use state
-        self._action_states = self.state.action_states
-        self.last_moved_in_mcp_mode = self.state.last_moved_in_mcp_mode
-        self.camera_was_touching = False  # Will be updated to use state
-        self._key_states = self.state.key_states
-        self._last_key_states = self.state.last_key_states
-        self.mcp_executor = self.state.mcp_executor
+            self.state.servers = []
+            self.state.chain = None
 
         # Connect LookPathTracker for MCP mode
-        if self.mode == "mcp":
+        if self.state.mode == "mcp":
             self.look_path_tracker.set_execution_callback(self.execute_mcp_action)
 
         # Initialize mode strategy
-        if self.mode == "pygame":
+        if self.state.mode == "pygame":
             self.strategy = PygameModeStrategy(self)
-        elif self.mode == "mcp":
+        elif self.state.mode == "mcp":
             self.strategy = MCPModeStrategy(self)
         else:
-            raise ValueError(f"Unknown mode: {self.mode}")
+            raise ValueError(f"Unknown mode: {self.state.mode}")
 
         # Initialize UI Manager
         self.ui_manager = UIManager(self.screen, self.state, self.look_path_tracker, self.look_visualization)
+        
+        # Initialize action dispatch dictionary for cleaner action handling
+        self._action_handlers = {
+            "movement": lambda v: self.handle_movement(v[0], v[1]) if v else None,
+            "camera_look": lambda v: self.handle_camera_look(v[0], v[1]) if v else None,
+            "camera_drag_state": lambda v: self._handle_camera_drag_state(v[0]) if v else None,
+            "left_click": self.handle_left_click,
+            "right_click": self.handle_right_click,
+            "jump": self._handle_jump_action,
+            "jump_keyboard": self._handle_jump_action,
+            "sneak_toggled": self.handle_sneak,
+            "sprint_toggled": self.handle_sprint,
+            "inventory_pressed": lambda _: self.handle_inventory(),
+            "drop_item_pressed": lambda _: self.handle_drop_item(),
+            "swap_hands_pressed": lambda _: self.handle_swap_hands(),
+            "clear_path_pressed": lambda _: self.handle_clear_path(),
+            "test_status_pressed": lambda _: self.handle_test_status(),
+            "save_demo_pressed": lambda _: self.handle_save_demonstration(),
+            "hotbar_slot_pressed": self.handle_hotbar_slot,
+        }
 
-        # Asyncio integration (following asyncio_pygame_example.py pattern)
-        self.event_loop = self.state.event_loop
-        self.event_queue = self.state.event_queue
-        self.command_queue = self.state.command_queue
-        self.result_queue = self.state.result_queue
+    # Property decorators for backward compatibility
+    @property
+    def mode(self):
+        """Access mode through state for backward compatibility."""
+        return self.state.mode
+    
+    @property
+    def sensitivity(self):
+        """Access sensitivity through state for backward compatibility."""
+        return self.state.sensitivity
+    
+    @property
+    def enable_logging(self):
+        """Access enable_logging through state for backward compatibility."""
+        return self.state.enable_logging
+    
+    @property
+    def running(self):
+        """Access running through state for backward compatibility."""
+        return self.state.running
+    
+    @running.setter
+    def running(self, value):
+        """Set running through state for backward compatibility."""
+        self.state.running = value
+    
+    @property
+    def connected(self):
+        """Access connected through state for backward compatibility."""
+        return self.state.connected
+    
+    @connected.setter
+    def connected(self, value):
+        """Set connected through state for backward compatibility."""
+        self.state.connected = value
+    
+    @property
+    def current_hotbar_slot(self):
+        """Access current_hotbar_slot through state for backward compatibility."""
+        return self.state.current_hotbar_slot
+    
+    @current_hotbar_slot.setter
+    def current_hotbar_slot(self, value):
+        """Set current_hotbar_slot through state for backward compatibility."""
+        self.state.current_hotbar_slot = value
+    
+    @property
+    def last_hotbar_slot(self):
+        """Access last_hotbar_slot through state for backward compatibility."""
+        return self.state.last_hotbar_slot
+    
+    @last_hotbar_slot.setter
+    def last_hotbar_slot(self, value):
+        """Set last_hotbar_slot through state for backward compatibility."""
+        self.state.last_hotbar_slot = value
+    
+    @property
+    def last_movement(self):
+        """Access last_movement through state for backward compatibility."""
+        return self.state.last_movement
+    
+    @last_movement.setter
+    def last_movement(self, value):
+        """Set last_movement through state for backward compatibility."""
+        self.state.last_movement = value
+    
+    @property
+    def last_moved_in_mcp_mode(self):
+        """Access last_moved_in_mcp_mode through state for backward compatibility."""
+        return self.state.last_moved_in_mcp_mode
+    
+    @last_moved_in_mcp_mode.setter
+    def last_moved_in_mcp_mode(self, value):
+        """Set last_moved_in_mcp_mode through state for backward compatibility."""
+        self.state.last_moved_in_mcp_mode = value
+    
+    @property
+    def websocket(self):
+        """Access websocket through state for backward compatibility."""
+        return self.state.websocket
+    
+    @websocket.setter
+    def websocket(self, value):
+        """Set websocket through state for backward compatibility."""
+        self.state.websocket = value
+    
+    @property
+    def connection_thread(self):
+        """Access connection_thread through state for backward compatibility."""
+        return self.state.connection_thread
+    
+    @connection_thread.setter
+    def connection_thread(self, value):
+        """Set connection_thread through state for backward compatibility."""
+        self.state.connection_thread = value
+    
+    @property
+    def loop(self):
+        """Access loop through state for backward compatibility."""
+        return self.state.loop
+    
+    @loop.setter
+    def loop(self, value):
+        """Set loop through state for backward compatibility."""
+        self.state.loop = value
+    
+    @property
+    def mcp_executor(self):
+        """Access mcp_executor through state for backward compatibility."""
+        return self.state.mcp_executor
+    
+    @mcp_executor.setter
+    def mcp_executor(self, value):
+        """Set mcp_executor through state for backward compatibility."""
+        self.state.mcp_executor = value
+    
+    @property
+    def chain(self):
+        """Access chain through state for backward compatibility."""
+        return self.state.chain
+    
+    @property
+    def servers(self):
+        """Access servers through state for backward compatibility."""
+        return self.state.servers
 
+    # Helper methods for action dispatch dictionary
+    
+    def _handle_jump_action(self, state: bool):
+        """Handle jump action, managing combined state from button and keyboard."""
+        if not hasattr(self, '_last_jump_state'):
+            self._last_jump_state = False
+        
+        if state != self._last_jump_state:
+            self.handle_jump(state)
+            self._last_jump_state = state
 
     def _calculate_duration(self, start_time: Optional[float]) -> str:
         """Calculate duration string from start time - updated with more options"""
@@ -149,7 +265,7 @@ class MinecraftController:
         mcp_params_func: Callable[[str], Dict[str, Any]] = None,
     ):
         """Generic handler for timed actions (clicks, jump, etc.)"""
-        state = self._action_states[action_name]
+        state = self.state.action_states[action_name]
 
         if pressed and not state["active"]:
             print(f"{action_name.upper()} DOWN - sending command")
@@ -178,7 +294,7 @@ class MinecraftController:
         self, action_name: str, toggled: bool, pygame_control: str, mcp_tool: str
     ):
         """Generic handler for toggle actions (sneak, sprint)"""
-        state = self._action_states[action_name]
+        state = self.state.action_states[action_name]
 
         if toggled != state["active"]:
             self.strategy.handle_toggle_action(mcp_tool, toggled, pygame_control)
@@ -186,8 +302,8 @@ class MinecraftController:
 
     def _detect_key_edge(self, key_name: str, current_state: bool) -> tuple[bool, bool]:
         """Detect key press/release edges. Returns (just_pressed, just_released)"""
-        last_state = self._last_key_states.get(key_name, False)
-        self._last_key_states[key_name] = current_state
+        last_state = self.state.last_key_states.get(key_name, False)
+        self.state.last_key_states[key_name] = current_state
 
         just_pressed = current_state and not last_state
         just_released = not current_state and last_state
@@ -298,6 +414,7 @@ class MinecraftController:
 
     def handle_left_click(self, pressed: bool):
         """Handle left click using the generic timed action handler"""
+        print(f"🔍 LEFT CLICK DEBUG: handle_left_click called with pressed={pressed}")
         self._handle_timed_action(
             "left_click",
             pressed,
@@ -472,13 +589,46 @@ class MinecraftController:
                 self.execute_mcp_action(mcp_command)
 
 
+    def _process_frame(self):
+        """Process a single frame of input and rendering. Common logic for both game loops."""
+        # Handle pygame events that need to be caught early
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                self.state.running = False
+                return False  # Signal to exit loop
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    self.state.running = False
+                    return False  # Signal to exit loop
+                elif event.key == pygame.K_r and self.state.mode == "pygame":
+                    # Reconnect - only in pygame mode
+                    self.state.connected = False
+                    self.start_websocket_connection()
+
+        # Get current input state
+        mouse_pos = pygame.mouse.get_pos()
+        mouse_pressed = pygame.mouse.get_pressed()[0]  # Left click
+        keys_pressed = pygame.key.get_pressed()
+
+        # Process all inputs through UIManager (now includes edge detection)
+        ui_actions = self.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed)
+        keyboard_actions = self.ui_manager.process_keyboard_shortcuts(keys_pressed)
+        
+        # Handle all actions returned by UIManager
+        self._process_ui_actions(ui_actions + keyboard_actions)
+
+        # Draw everything using UIManager
+        self.ui_manager.draw()
+        
+        return True  # Continue running
+
     def run(self):
-        print(f"Starting Minecraft Controller in {self.mode.upper()} mode...")
+        print(f"Starting Minecraft Controller in {self.state.mode.upper()} mode...")
         
         # Initialize connection using strategy
         self.strategy.connect()
         
-        if self.mode == "pygame":
+        if self.state.mode == "pygame":
             print("Commands will be forwarded to the Minecraft bot")
             print(
                 "Make sure the Minecraft web client server is running on localhost:8081"
@@ -492,250 +642,38 @@ class MinecraftController:
             print("MCP mode should be started via handle_interactive_session()")
 
     def _run_pygame_loop(self):
-        """Traditional pygame event loop for pygame mode"""
-        while self.running:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        self.running = False
-                    elif event.key == pygame.K_r:
-                        # Reconnect
-                        self.state.connected = False
-                        self.connected = False  # Backward compatibility
-                        self.start_websocket_connection()
-
-            # Get mouse state
-            mouse_pos = pygame.mouse.get_pos()
-            mouse_pressed = pygame.mouse.get_pressed()[0]  # Left click
-
-            # Get keyboard state
-            keys_pressed = pygame.key.get_pressed()
-
-            # Process UI inputs through UIManager
-            ui_actions = self.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed)
-            keyboard_actions = self.ui_manager.process_keyboard_shortcuts(keys_pressed)
-            
-            # Handle all actions returned by UIManager
-            self._process_ui_actions(ui_actions + keyboard_actions)
-            
-            # Handle keyboard shortcuts that need edge detection
-            self._handle_keyboard_shortcuts_edge_detection(keys_pressed)
-
-            # Draw everything using UIManager
-            self.ui_manager.draw()
+        """Traditional pygame event loop for pygame mode."""
+        while self.state.running:
+            if not self._process_frame():
+                break
             self.clock.tick(FPS)
 
     def _process_ui_actions(self, actions: List[Tuple[str, Any]]):
-        """Process actions returned by UIManager."""
+        """Process actions returned by UIManager using dispatch dictionary."""
+        # Debug: Print all actions being processed
+        left_click_actions = [(name, val) for name, val in actions if 'left_click' in name]
+        if left_click_actions:
+            print(f"🔍 LEFT CLICK DEBUG: Processing actions: {left_click_actions}")
+        
         for action_name, value in actions:
-            if action_name == "movement" and value:
-                self.handle_movement(value[0], value[1])
-                
-            elif action_name == "camera_look" and value:
-                self.handle_camera_look(value[0], value[1])
-                
-            elif action_name == "camera_drag_state":
-                mouse_pressed, camera_is_clicking = value
-                self._handle_camera_drag_state(mouse_pressed)
-                
-            elif action_name == "left_click":
-                self.handle_left_click(value)
-                
-            elif action_name == "right_click":
-                self.handle_right_click(value)
-                
-            elif action_name == "left_click_keyboard":
-                # Combine with button state
-                button_pressed = getattr(self.ui_manager, 'left_click_btn', None)
-                combined = value or (button_pressed and button_pressed.is_pressed)
-                self.handle_left_click(combined)
-                
-            elif action_name == "right_click_keyboard":
-                # Combine with button state
-                button_pressed = getattr(self.ui_manager, 'right_click_btn', None)
-                combined = value or (button_pressed and button_pressed.is_pressed)
-                self.handle_right_click(combined)
-                
-            elif action_name == "jump" or action_name == "jump_keyboard":
-                # Combine button and keyboard input
-                button_state = action_name == "jump" and value
-                keyboard_state = action_name == "jump_keyboard" and value
-                if hasattr(self, '_last_jump_state'):
-                    combined = button_state or keyboard_state
-                    if combined != self._last_jump_state:
-                        self.handle_jump(combined)
-                        self._last_jump_state = combined
-                else:
-                    self._last_jump_state = button_state or keyboard_state
-                    self.handle_jump(self._last_jump_state)
-                
-            elif action_name == "sneak_toggled":
-                self.handle_sneak(value)
-                
-            elif action_name == "sprint_toggled":
-                self.handle_sprint(value)
-                
-            elif action_name == "inventory_pressed":
-                self.handle_inventory()
-                
-            elif action_name == "drop_item_pressed":
-                self.handle_drop_item()
-                
-            elif action_name == "swap_hands_pressed":
-                self.handle_swap_hands()
-                
-            elif action_name == "clear_path_pressed":
-                self.handle_clear_path()
-                
-            elif action_name == "test_status_pressed":
-                self.handle_test_status()
-                
-            elif action_name == "save_demo_pressed":
-                self.handle_save_demonstration()
-                
-            elif action_name == "hotbar_slot_pressed":
-                self.handle_hotbar_slot(value)
-                
-            elif action_name == "keyboard_shortcuts":
-                # Handle special keyboard shortcuts that need edge detection
-                # This is processed separately in _handle_keyboard_shortcuts_edge_detection
-                pass
+            handler = self._action_handlers.get(action_name)
+            if handler:
+                if 'left_click' in action_name:
+                    print(f"🔍 LEFT CLICK DEBUG: Calling handler for '{action_name}' with value: {value}")
+                handler(value)
+            else:
+                # Unknown action - log warning but don't crash
+                if action_name:  # Don't warn for empty action names
+                    print(f"Warning: No handler for action '{action_name}'")
     
-    def _handle_keyboard_shortcuts_edge_detection(self, keys_pressed):
-        """Handle keyboard shortcuts that require edge detection."""
-        # Handle Q key (drop item)
-        q_current = keys_pressed[pygame.K_q]
-        q_just_pressed, _ = self._detect_key_edge("q_action", q_current)
-        if q_just_pressed:
-            print("Q pressed detected! (Drop item)")
-            self.handle_drop_item()
-
-        # Handle F key (swap hands)
-        f_current = keys_pressed[pygame.K_f]
-        f_just_pressed, _ = self._detect_key_edge("f_action", f_current)
-        if f_just_pressed:
-            print("F pressed detected! (Swap hands)")
-            self.handle_swap_hands()
-
-        # Handle hotbar keys (1-9)
-        hotbar_keys = [
-            pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5,
-            pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9,
-        ]
-        for i, key in enumerate(hotbar_keys):
-            key_current = keys_pressed[key]
-            key_just_pressed, _ = self._detect_key_edge(f"hotbar_{i}", key_current)
-            if key_just_pressed:
-                print(f"Hotbar key {i + 1} pressed!")
-                self.handle_hotbar_slot(i)
-
-        # Handle C key (clear path)
-        c_current = keys_pressed[pygame.K_c]
-        c_just_pressed, _ = self._detect_key_edge("c_action", c_current)
-        if c_just_pressed:
-            print("Look path cleared with C key!")
-            self.handle_clear_path()
-
-    def _handle_all_inputs(self, mouse_pos, mouse_pressed, keys_pressed):
-        """Legacy input handler - replaced by UIManager.process_inputs()"""
-        # This method is deprecated and replaced by UIManager
-        # Keeping for backward compatibility but delegating to UIManager
-        ui_actions = self.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed)
-        keyboard_actions = self.ui_manager.process_keyboard_shortcuts(keys_pressed)
-        
-        # Process all actions
-        self._process_ui_actions(ui_actions + keyboard_actions)
-        
-        # Handle keyboard shortcuts that need edge detection
-        self._handle_keyboard_shortcuts_edge_detection(keys_pressed)
-
-    def _handle_keyboard_shortcuts(self, q_current, f_current, keys_pressed):
-        """Handle keyboard shortcuts with proper press/release detection"""
-        # Handle Q key (drop item)
-        q_just_pressed, _ = self._detect_key_edge("q_action", q_current)
-        if q_just_pressed:
-            print("Q pressed detected! (Drop item)")
-            self.handle_drop_item()
-
-        # Handle F key (swap hands)
-        f_just_pressed, _ = self._detect_key_edge("f_action", f_current)
-        if f_just_pressed:
-            print("F pressed detected! (Swap hands)")
-            self.handle_swap_hands()
-
-        # Handle hotbar keys (1-9)
-        hotbar_keys = [
-            pygame.K_1,
-            pygame.K_2,
-            pygame.K_3,
-            pygame.K_4,
-            pygame.K_5,
-            pygame.K_6,
-            pygame.K_7,
-            pygame.K_8,
-            pygame.K_9,
-        ]
-        for i, key in enumerate(hotbar_keys):
-            key_current = keys_pressed[key]
-            key_just_pressed, _ = self._detect_key_edge(f"hotbar_{i}", key_current)
-            if key_just_pressed:
-                print(f"Hotbar key {i + 1} pressed!")
-                self.handle_hotbar_slot(i)
-
-        # Handle C key (clear path)
-        c_current = keys_pressed[pygame.K_c]
-        self._key_states["c"] = c_current
-        c_just_pressed, _ = self._detect_key_edge("c_action", c_current)
-        if c_just_pressed:
-            print("Look path cleared with C key!")
-            self.handle_clear_path()
 
     async def animation_loop(self):
-        """Main animation loop following asyncio_pygame_example.py pattern"""
-        current_time = 0
-
-        while self.running:
-            last_time, current_time = current_time, time.time()
-
-            # Handle pygame events on main thread
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    self.running = False
-                    break
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_ESCAPE:
-                        self.running = False
-                        break
-                    elif event.key == pygame.K_r and self.mode == "pygame":
-                        self.connected = False
-                        self.start_websocket_connection()
-
-            if not self.running:
+        """Main animation loop for async modes."""
+        while self.state.running:
+            if not self._process_frame():
                 break
-
-            # Handle input and rendering
-            mouse_pos = pygame.mouse.get_pos()
-            mouse_pressed = pygame.mouse.get_pressed()[0]
-            keys_pressed = pygame.key.get_pressed()
-
-            # Process UI inputs through UIManager (same as pygame loop)
-            ui_actions = self.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed)
-            keyboard_actions = self.ui_manager.process_keyboard_shortcuts(keys_pressed)
-            
-            # Handle all actions returned by UIManager
-            self._process_ui_actions(ui_actions + keyboard_actions)
-            
-            # Handle keyboard shortcuts that need edge detection
-            self._handle_keyboard_shortcuts_edge_detection(keys_pressed)
-
-            # Draw everything using UIManager
-            self.ui_manager.draw()
-
-            # Frame rate limiting (similar to asyncio_pygame_example.py)
-            sleep_time = min(1 / FPS - (current_time - last_time - 1 / FPS), 1 / FPS)
-            await asyncio.sleep(max(sleep_time, 0.001))
+            # Async frame rate limiting
+            await asyncio.sleep(1 / FPS)
 
     async def test_get_bot_status_startup(self, chain):
         """Test getBotStatus at startup"""

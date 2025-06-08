@@ -43,8 +43,21 @@ class UIManager:
         # Dictionary to store all UI buttons for easy access
         self.buttons: Dict[str, Any] = {}
         
+        # Edge detection state for keyboard shortcuts
+        self._last_key_states: Dict[str, bool] = {}
+        
         # Initialize UI elements
         self._init_ui_elements()
+    
+    def _detect_key_edge(self, key_name: str, current_state: bool) -> tuple[bool, bool]:
+        """Detect key press/release edges. Returns (just_pressed, just_released)"""
+        last_state = self._last_key_states.get(key_name, False)
+        self._last_key_states[key_name] = current_state
+
+        just_pressed = current_state and not last_state
+        just_released = not current_state and last_state
+
+        return just_pressed, just_released
     
     def _init_ui_elements(self):
         """Initialize all UI elements using configuration."""
@@ -149,6 +162,7 @@ class UIManager:
         # Handle action buttons
         if self.left_click_btn.handle_mouse(mouse_pos, mouse_pressed):
             pass  # Handle on hold/release
+        print(f"🔍 UIMANAGER DEBUG: left_click button state: {self.left_click_btn.is_pressed}")
         actions.append(("left_click", self.left_click_btn.is_pressed))
         
         if self.right_click_btn.handle_mouse(mouse_pos, mouse_pressed):
@@ -219,23 +233,42 @@ class UIManager:
             "c": c_current,
         })
         
-        # Combine all left click inputs
-        left_click_input = ctrl_current or z_current
-        # Combine all right click inputs
-        right_click_input = tab_current or x_current
+        # Combine all left click inputs (keyboard shortcuts)
+        keyboard_left_click = ctrl_current or z_current
+        # Combine all right click inputs (keyboard shortcuts)
+        keyboard_right_click = tab_current or x_current
         
-        # Add keyboard click actions
-        actions.append(("left_click_keyboard", left_click_input))
-        actions.append(("right_click_keyboard", right_click_input))
+        # Add keyboard click actions (will be combined with button states in process_inputs)
+        actions.append(("left_click_keyboard", keyboard_left_click))
+        actions.append(("right_click_keyboard", keyboard_right_click))
         actions.append(("jump_keyboard", space_current))
         
-        # Handle other keyboard shortcuts (these need edge detection)
-        actions.append(("keyboard_shortcuts", {
-            "q": q_current,
-            "f": f_current,
-            "c": c_current,
-            "keys_1_9": [keys_pressed[getattr(pygame, f"K_{i}")] for i in range(1, 10)]
-        }))
+        # Handle edge detection for one-time actions
+        # Q key (drop item)
+        q_just_pressed, _ = self._detect_key_edge("q_action", q_current)
+        if q_just_pressed:
+            actions.append(("drop_item_pressed", None))
+        
+        # F key (swap hands)
+        f_just_pressed, _ = self._detect_key_edge("f_action", f_current)
+        if f_just_pressed:
+            actions.append(("swap_hands_pressed", None))
+        
+        # C key (clear path)
+        c_just_pressed, _ = self._detect_key_edge("c_action", c_current)
+        if c_just_pressed:
+            actions.append(("clear_path_pressed", None))
+        
+        # Hotbar keys (1-9)
+        hotbar_keys = [
+            pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5,
+            pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9,
+        ]
+        for i, key in enumerate(hotbar_keys):
+            key_current = keys_pressed[key]
+            key_just_pressed, _ = self._detect_key_edge(f"hotbar_{i}", key_current)
+            if key_just_pressed:
+                actions.append(("hotbar_slot_pressed", i))
         
         return actions
     
