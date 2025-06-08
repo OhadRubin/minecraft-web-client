@@ -1,4 +1,3 @@
-
 import asyncio
 import json
 import websockets
@@ -36,7 +35,7 @@ class MinecraftController:
             sensitivity=sensitivity,
             enable_logging=enable_logging
         )
-        
+
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Minecraft Web Client Controller")
         self.clock = pygame.time.Clock()
@@ -70,14 +69,18 @@ class MinecraftController:
 
         # Initialize UI Manager
         self.ui_manager = UIManager(self.screen, self.state, self.look_path_tracker, self.look_visualization)
-        
+
         # Initialize action dispatch dictionary for cleaner action handling
         self._action_handlers = {
             "movement": lambda v: self.handle_movement(v[0], v[1]) if v else None,
             "camera_look": lambda v: self.handle_camera_look(v[0], v[1]) if v else None,
-            "camera_drag_state": lambda v: self._handle_camera_drag_state(v[0]) if v else None,
+            "camera_drag_state": lambda v: (
+                self._handle_camera_drag_state(v[0]) if v else None
+            ),
             "left_click": self.handle_left_click,
             "right_click": self.handle_right_click,
+            "left_click_keyboard": self._handle_left_click_keyboard,
+            "right_click_keyboard": self._handle_right_click_keyboard,
             "jump": self._handle_jump_action,
             "jump_keyboard": self._handle_jump_action,
             "sneak_toggled": self.handle_sneak,
@@ -96,137 +99,157 @@ class MinecraftController:
     def mode(self):
         """Access mode through state for backward compatibility."""
         return self.state.mode
-    
+
     @property
     def sensitivity(self):
         """Access sensitivity through state for backward compatibility."""
         return self.state.sensitivity
-    
+
     @property
     def enable_logging(self):
         """Access enable_logging through state for backward compatibility."""
         return self.state.enable_logging
-    
+
     @property
     def running(self):
         """Access running through state for backward compatibility."""
         return self.state.running
-    
+
     @running.setter
     def running(self, value):
         """Set running through state for backward compatibility."""
         self.state.running = value
-    
+
     @property
     def connected(self):
         """Access connected through state for backward compatibility."""
         return self.state.connected
-    
+
     @connected.setter
     def connected(self, value):
         """Set connected through state for backward compatibility."""
         self.state.connected = value
-    
+
     @property
     def current_hotbar_slot(self):
         """Access current_hotbar_slot through state for backward compatibility."""
         return self.state.current_hotbar_slot
-    
+
     @current_hotbar_slot.setter
     def current_hotbar_slot(self, value):
         """Set current_hotbar_slot through state for backward compatibility."""
         self.state.current_hotbar_slot = value
-    
+
     @property
     def last_hotbar_slot(self):
         """Access last_hotbar_slot through state for backward compatibility."""
         return self.state.last_hotbar_slot
-    
+
     @last_hotbar_slot.setter
     def last_hotbar_slot(self, value):
         """Set last_hotbar_slot through state for backward compatibility."""
         self.state.last_hotbar_slot = value
-    
+
     @property
     def last_movement(self):
         """Access last_movement through state for backward compatibility."""
         return self.state.last_movement
-    
+
     @last_movement.setter
     def last_movement(self, value):
         """Set last_movement through state for backward compatibility."""
         self.state.last_movement = value
-    
+
     @property
     def last_moved_in_mcp_mode(self):
         """Access last_moved_in_mcp_mode through state for backward compatibility."""
         return self.state.last_moved_in_mcp_mode
-    
+
     @last_moved_in_mcp_mode.setter
     def last_moved_in_mcp_mode(self, value):
         """Set last_moved_in_mcp_mode through state for backward compatibility."""
         self.state.last_moved_in_mcp_mode = value
-    
+
     @property
     def websocket(self):
         """Access websocket through state for backward compatibility."""
         return self.state.websocket
-    
+
     @websocket.setter
     def websocket(self, value):
         """Set websocket through state for backward compatibility."""
         self.state.websocket = value
-    
+
     @property
     def connection_thread(self):
         """Access connection_thread through state for backward compatibility."""
         return self.state.connection_thread
-    
+
     @connection_thread.setter
     def connection_thread(self, value):
         """Set connection_thread through state for backward compatibility."""
         self.state.connection_thread = value
-    
+
     @property
     def loop(self):
         """Access loop through state for backward compatibility."""
         return self.state.loop
-    
+
     @loop.setter
     def loop(self, value):
         """Set loop through state for backward compatibility."""
         self.state.loop = value
-    
+
     @property
     def mcp_executor(self):
         """Access mcp_executor through state for backward compatibility."""
         return self.state.mcp_executor
-    
+
     @mcp_executor.setter
     def mcp_executor(self, value):
         """Set mcp_executor through state for backward compatibility."""
         self.state.mcp_executor = value
-    
+
     @property
     def chain(self):
         """Access chain through state for backward compatibility."""
         return self.state.chain
-    
+
     @property
     def servers(self):
         """Access servers through state for backward compatibility."""
         return self.state.servers
 
     # Helper methods for action dispatch dictionary
-    
+
     def _handle_jump_action(self, state: bool):
         """Handle jump action, managing combined state from button and keyboard."""
         if not hasattr(self, '_last_jump_state'):
             self._last_jump_state = False
-        
+
         if state != self._last_jump_state:
             self.handle_jump(state)
             self._last_jump_state = state
+
+    def _handle_left_click_keyboard(self, keyboard_state: bool):
+        """Handle left click keyboard input, combining with button state."""
+        # Get button state from UI manager
+        button_pressed = getattr(self.ui_manager, "left_click_btn", None)
+        button_state = button_pressed.is_pressed if button_pressed else False
+
+        # Combine keyboard and button states (OR logic)
+        combined_state = keyboard_state or button_state
+        self.handle_left_click(combined_state)
+
+    def _handle_right_click_keyboard(self, keyboard_state: bool):
+        """Handle right click keyboard input, combining with button state."""
+        # Get button state from UI manager
+        button_pressed = getattr(self.ui_manager, "right_click_btn", None)
+        button_state = button_pressed.is_pressed if button_pressed else False
+
+        # Combine keyboard and button states (OR logic)
+        combined_state = keyboard_state or button_state
+        self.handle_right_click(combined_state)
 
     def _calculate_duration(self, start_time: Optional[float]) -> str:
         """Calculate duration string from start time - updated with more options"""
@@ -414,7 +437,6 @@ class MinecraftController:
 
     def handle_left_click(self, pressed: bool):
         """Handle left click using the generic timed action handler"""
-        print(f"🔍 LEFT CLICK DEBUG: handle_left_click called with pressed={pressed}")
         self._handle_timed_action(
             "left_click",
             pressed,
@@ -588,7 +610,6 @@ class MinecraftController:
             if mcp_command:
                 self.execute_mcp_action(mcp_command)
 
-
     def _process_frame(self):
         """Process a single frame of input and rendering. Common logic for both game loops."""
         # Handle pygame events that need to be caught early
@@ -610,24 +631,110 @@ class MinecraftController:
         mouse_pressed = pygame.mouse.get_pressed()[0]  # Left click
         keys_pressed = pygame.key.get_pressed()
 
-        # Process all inputs through UIManager (now includes edge detection)
+        # Process all inputs through UIManager (discrete actions)
         ui_actions = self.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed)
         keyboard_actions = self.ui_manager.process_keyboard_shortcuts(keys_pressed)
-        
+
         # Handle all actions returned by UIManager
         self._process_ui_actions(ui_actions + keyboard_actions)
 
+        # Process continuous state for streaming behavior (RESTORED)
+        self._process_continuous_state(mouse_pos, mouse_pressed, keys_pressed)
+
+        # Handle keyboard shortcuts edge detection (RESTORED)
+        self._handle_keyboard_shortcuts_edge_detection(keys_pressed)
+
         # Draw everything using UIManager
         self.ui_manager.draw()
-        
+
         return True  # Continue running
+
+    def _process_continuous_state(self, mouse_pos, mouse_pressed, keys_pressed):
+        """Process continuous state that needs streaming every frame (RESTORED)"""
+        # This ensures continuous streaming for held inputs that need constant updates
+        # NOTE: This complements the discrete action system with continuous state processing
+        # Movement is already handled properly by the UI manager, so we focus on button holds
+
+        # Only process continuous streaming in pygame mode
+        if self.state.mode != "pygame":
+            return
+
+        # Check for continuous button holds (mining/building)
+        # In pygame mode, we need to send continuous "button held" commands
+        left_click_state = self.state.action_states.get("left_click", {})
+        if left_click_state.get("active", False):
+            # Left click is being held - send continuous mining command
+            command = {
+                "type": "documentMouseEvent",
+                "button": 0,
+                "action": "down",
+                "updateMouse": True,
+            }
+            self.send_command_sync(command)
+
+        right_click_state = self.state.action_states.get("right_click", {})
+        if right_click_state.get("active", False):
+            # Right click is being held - send continuous right click command
+            command = {"type": "rightDown"}
+            self.send_command_sync(command)
+
+        # NOTE: Movement streaming is already handled properly by the UI manager
+        # in process_inputs() -> handle_movement() flow, so we don't duplicate it here
+
+    def _handle_keyboard_shortcuts_edge_detection(self, keys_pressed):
+        """Handle keyboard shortcuts that require edge detection (RESTORED)"""
+        # This method handles keyboard shortcuts that need precise press/release detection
+        # It was removed in the refactor but is essential for proper keyboard handling
+
+        # Handle hotbar slot shortcuts (1-9 keys)
+        for i, key in enumerate(
+            [
+                pygame.K_1,
+                pygame.K_2,
+                pygame.K_3,
+                pygame.K_4,
+                pygame.K_5,
+                pygame.K_6,
+                pygame.K_7,
+                pygame.K_8,
+                pygame.K_9,
+            ]
+        ):
+            key_name = f"hotbar_{i}"
+            just_pressed, just_released = self._detect_key_edge(
+                key_name, keys_pressed[key]
+            )
+
+            if just_pressed:
+                self.handle_hotbar_slot(i)
+
+        # Handle drop item (Q key)
+        just_pressed, just_released = self._detect_key_edge(
+            "drop_item", keys_pressed[pygame.K_q]
+        )
+        if just_pressed:
+            self.handle_drop_item()
+
+        # Handle swap hands (F key)
+        just_pressed, just_released = self._detect_key_edge(
+            "swap_hands", keys_pressed[pygame.K_f]
+        )
+        if just_pressed:
+            self.handle_swap_hands()
+
+        # Handle inventory (E key)
+        just_pressed, just_released = self._detect_key_edge(
+            "inventory", keys_pressed[pygame.K_e]
+        )
+        if just_pressed:
+            self.handle_inventory()
 
     def run(self):
         print(f"Starting Minecraft Controller in {self.state.mode.upper()} mode...")
-        
+
         # Initialize connection using strategy
         self.strategy.connect()
-        
+
         if self.state.mode == "pygame":
             print("Commands will be forwarded to the Minecraft bot")
             print(
@@ -650,22 +757,14 @@ class MinecraftController:
 
     def _process_ui_actions(self, actions: List[Tuple[str, Any]]):
         """Process actions returned by UIManager using dispatch dictionary."""
-        # Debug: Print all actions being processed
-        left_click_actions = [(name, val) for name, val in actions if 'left_click' in name]
-        if left_click_actions:
-            print(f"🔍 LEFT CLICK DEBUG: Processing actions: {left_click_actions}")
-        
         for action_name, value in actions:
             handler = self._action_handlers.get(action_name)
             if handler:
-                if 'left_click' in action_name:
-                    print(f"🔍 LEFT CLICK DEBUG: Calling handler for '{action_name}' with value: {value}")
                 handler(value)
             else:
                 # Unknown action - log warning but don't crash
                 if action_name:  # Don't warn for empty action names
                     print(f"Warning: No handler for action '{action_name}'")
-    
 
     async def animation_loop(self):
         """Main animation loop for async modes."""
