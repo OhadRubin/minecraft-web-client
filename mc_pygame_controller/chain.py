@@ -280,33 +280,12 @@ class PygameMCPAsyncMessageChain:
                                         first_line = text_content.split("\n")[0]
                                         print(f"📋 Result: {first_line}")
                             if tool_name == "lookAngle" and "getBotStatus" in self.tools_mapping:
-                                try:
-                                    print("👁️ Getting updated view after look command...")
-                                    status_result = await self.tools_mapping["getBotStatus"]()
-                                    if (
-                                        status_result
-                                        and isinstance(status_result, dict)
-                                        and "content" in status_result
-                                    ):
-                                        status_content = status_result["content"]
-                                        if (
-                                            isinstance(status_content, list)
-                                            and len(status_content) > 0
-                                        ):
-                                            status_text = status_content[0].get("text", "")
-                                            if status_text:
-                                                lines = status_text.split("\n")
-                                                position_line = lines[0] if lines else ""
-                                                looking_at_line = [
-                                                    line for line in lines if "Looking at:" in line
-                                                ]
-                                                if looking_at_line:
-                                                    print(f"🎯 {position_line}")
-                                                    print(f"🎯 {looking_at_line[0]}")
-                                                else:
-                                                    print(f"🎯 {position_line}")
-                                except Exception as e:
-                                    print(f"⚠️ Could not get updated status after look: {e}")
+                                # ✅ REFACTORED: Use shared BotStatusProcessor to eliminate duplication
+                                from .bot_status_utils import BotStatusProcessor
+
+                                await BotStatusProcessor.get_status_after_look(
+                                    self.tools_mapping
+                                )
                     else:
                         error_msg = f"Tool '{tool_name}' not found in tools_mapping"
                         self = self.tool(

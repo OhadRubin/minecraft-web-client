@@ -340,98 +340,11 @@ class PygameModeStrategy(ModeStrategy):
                     self.async_executor.cleanup_response_handler(sequence_id)
 
     def _convert_actions_to_mcp_format(self, pygame_actions):
-        """Convert pygame WebSocket commands to MCP tool calls."""
-        mcp_actions = []
+        """Convert pygame WebSocket commands to MCP tool calls using shared ActionConverter."""
+        # ✅ REFACTORED: Use shared ActionConverter to eliminate duplication
+        from .action_converter import ActionConverter
 
-        for action in pygame_actions:
-            if isinstance(action, dict):
-                # Handle dict-based commands
-                if action.get("type") == "move":
-                    x, z = action.get("x", 0), action.get("z", 0)
-                    if abs(x) > 0.1 or abs(z) > 0.1:
-                        # Calculate duration based on movement magnitude
-                        magnitude = (x**2 + z**2) ** 0.5
-                        duration = int(magnitude * 2000)  # Scale to reasonable duration
-                        mcp_actions.append(
-                            {"tool": "walk", "parameters": {"duration": duration}}
-                        )
-                elif action.get("type") == "look":
-                    # CRITICAL FIX: Handle actual look commands with proper parameter extraction
-                    movement_x = action.get("movementX", 0)
-                    movement_y = action.get("movementY", 0)
-
-                    # Convert pixel movements to angles using same logic as LookPathTracker
-                    sensitivity = 5.0  # Default sensitivity
-                    x_angle = movement_x / sensitivity
-                    y_angle = -(movement_y / sensitivity)  # Invert Y axis
-
-                    # Only add if movement is significant (same threshold as LookPathTracker)
-                    if abs(x_angle) > 0.2 or abs(y_angle) > 0.2:
-                        mcp_actions.append(
-                            {
-                                "tool": "lookAngle",
-                                "parameters": {
-                                    "xAngle": round(x_angle, 1),
-                                    "yAngle": round(y_angle, 1),
-                                    "speed": "normal",
-                                },
-                            }
-                        )
-                elif (
-                    action.get("type") == "documentMouseEvent"
-                    and action.get("button") == 0
-                ):
-                    # Left click
-                    mcp_actions.append(
-                        {"tool": "leftClick", "parameters": {"duration": "short"}}
-                    )
-                elif action.get("type") == "rightDown":
-                    # Right click
-                    mcp_actions.append(
-                        {"tool": "rightClick", "parameters": {"duration": "short"}}
-                    )
-            elif isinstance(action, str):
-                # Handle string-based commands (legacy format)
-                if '"move":' in action:
-                    mcp_actions.append(
-                        {
-                            "tool": "walk",
-                            "parameters": {"duration": 1000},  # Default duration
-                        }
-                    )
-                elif '"look":' in action:
-                    # Legacy string format - extract actual parameters if possible
-                    try:
-                        import json
-
-                        action_data = json.loads(action)
-                        if "look" in action_data:
-                            look_data = action_data["look"]
-                            movement_x = look_data.get("movementX", 0)
-                            movement_y = look_data.get("movementY", 0)
-
-                            sensitivity = 5.0
-                            x_angle = movement_x / sensitivity
-                            y_angle = -(movement_y / sensitivity)
-
-                            if abs(x_angle) > 0.2 or abs(y_angle) > 0.2:
-                                mcp_actions.append(
-                                    {
-                                        "tool": "lookAngle",
-                                        "parameters": {
-                                            "xAngle": round(x_angle, 1),
-                                            "yAngle": round(y_angle, 1),
-                                            "speed": "normal",
-                                        },
-                                    }
-                                )
-                    except (json.JSONDecodeError, KeyError):
-                        # Fallback for malformed strings - skip rather than use 0,0
-                        print(f"⚠️ Could not parse look action: {action}")
-
-        return mcp_actions
-
-        # Removed placeholder parsing methods - now handling properly in _convert_actions_to_mcp_format
+        return ActionConverter.pygame_to_mcp_simple(pygame_actions)
 
 
 class MCPModeStrategy(ModeStrategy):

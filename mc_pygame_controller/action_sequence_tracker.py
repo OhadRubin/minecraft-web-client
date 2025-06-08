@@ -175,82 +175,11 @@ class ActionSequenceTracker:
         return chain
 
     def _convert_pygame_to_tool_calls(self, pygame_actions, sequence_id):
-        """Convert pygame actions to OpenAI tool call format."""
-        tool_calls = []
+        """Convert pygame actions to OpenAI tool call format using shared ActionConverter."""
+        # ✅ REFACTORED: Use shared ActionConverter to eliminate duplication
+        from .action_converter import ActionConverter
 
-        for i, action in enumerate(pygame_actions):
-            if isinstance(action, dict):
-                # Handle dict-based commands
-                if action.get("type") == "move":
-                    x, z = action.get("x", 0), action.get("z", 0)
-                    if abs(x) > 0.1 or abs(z) > 0.1:
-                        magnitude = (x**2 + z**2) ** 0.5
-                        duration = int(magnitude * 2000)
-                        tool_calls.append(
-                            {
-                                "id": f"call_{sequence_id}_walk_{i}",
-                                "type": "function",
-                                "function": {
-                                    "name": "walk",
-                                    "arguments": json.dumps({"duration": duration}),
-                                },
-                            }
-                        )
-
-                elif action.get("type") == "look":
-                    movement_x = action.get("movementX", 0)
-                    movement_y = action.get("movementY", 0)
-
-                    sensitivity = 5.0
-                    x_angle = movement_x / sensitivity
-                    y_angle = -(movement_y / sensitivity)
-
-                    if abs(x_angle) > 0.2 or abs(y_angle) > 0.2:
-                        tool_calls.append(
-                            {
-                                "id": f"call_{sequence_id}_lookAngle_{i}",
-                                "type": "function",
-                                "function": {
-                                    "name": "lookAngle",
-                                    "arguments": json.dumps(
-                                        {
-                                            "xAngle": round(x_angle, 1),
-                                            "yAngle": round(y_angle, 1),
-                                            "speed": "normal",
-                                        }
-                                    ),
-                                },
-                            }
-                        )
-
-                elif (
-                    action.get("type") == "documentMouseEvent"
-                    and action.get("button") == 0
-                ):
-                    tool_calls.append(
-                        {
-                            "id": f"call_{sequence_id}_leftClick_{i}",
-                            "type": "function",
-                            "function": {
-                                "name": "leftClick",
-                                "arguments": json.dumps({"duration": "short"}),
-                            },
-                        }
-                    )
-
-                elif action.get("type") == "rightDown":
-                    tool_calls.append(
-                        {
-                            "id": f"call_{sequence_id}_rightClick_{i}",
-                            "type": "function",
-                            "function": {
-                                "name": "rightClick",
-                                "arguments": json.dumps({"duration": "short"}),
-                            },
-                        }
-                    )
-
-        return tool_calls
+        return ActionConverter.pygame_to_openai_tools(pygame_actions, sequence_id)
 
     def is_sequence_complete(
         self, sequence_id: str, expected_responses: int = None
