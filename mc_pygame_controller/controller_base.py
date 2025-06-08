@@ -94,132 +94,6 @@ class MinecraftController:
             "hotbar_slot_pressed": self.handle_hotbar_slot,
         }
 
-    # Property decorators for backward compatibility
-    @property
-    def mode(self):
-        """Access mode through state for backward compatibility."""
-        return self.state.mode
-
-    @property
-    def sensitivity(self):
-        """Access sensitivity through state for backward compatibility."""
-        return self.state.sensitivity
-
-    @property
-    def enable_logging(self):
-        """Access enable_logging through state for backward compatibility."""
-        return self.state.enable_logging
-
-    @property
-    def running(self):
-        """Access running through state for backward compatibility."""
-        return self.state.running
-
-    @running.setter
-    def running(self, value):
-        """Set running through state for backward compatibility."""
-        self.state.running = value
-
-    @property
-    def connected(self):
-        """Access connected through state for backward compatibility."""
-        return self.state.connected
-
-    @connected.setter
-    def connected(self, value):
-        """Set connected through state for backward compatibility."""
-        self.state.connected = value
-
-    @property
-    def current_hotbar_slot(self):
-        """Access current_hotbar_slot through state for backward compatibility."""
-        return self.state.current_hotbar_slot
-
-    @current_hotbar_slot.setter
-    def current_hotbar_slot(self, value):
-        """Set current_hotbar_slot through state for backward compatibility."""
-        self.state.current_hotbar_slot = value
-
-    @property
-    def last_hotbar_slot(self):
-        """Access last_hotbar_slot through state for backward compatibility."""
-        return self.state.last_hotbar_slot
-
-    @last_hotbar_slot.setter
-    def last_hotbar_slot(self, value):
-        """Set last_hotbar_slot through state for backward compatibility."""
-        self.state.last_hotbar_slot = value
-
-    @property
-    def last_movement(self):
-        """Access last_movement through state for backward compatibility."""
-        return self.state.last_movement
-
-    @last_movement.setter
-    def last_movement(self, value):
-        """Set last_movement through state for backward compatibility."""
-        self.state.last_movement = value
-
-    @property
-    def last_moved_in_mcp_mode(self):
-        """Access last_moved_in_mcp_mode through state for backward compatibility."""
-        return self.state.last_moved_in_mcp_mode
-
-    @last_moved_in_mcp_mode.setter
-    def last_moved_in_mcp_mode(self, value):
-        """Set last_moved_in_mcp_mode through state for backward compatibility."""
-        self.state.last_moved_in_mcp_mode = value
-
-    @property
-    def websocket(self):
-        """Access websocket through state for backward compatibility."""
-        return self.state.websocket
-
-    @websocket.setter
-    def websocket(self, value):
-        """Set websocket through state for backward compatibility."""
-        self.state.websocket = value
-
-    @property
-    def connection_thread(self):
-        """Access connection_thread through state for backward compatibility."""
-        return self.state.connection_thread
-
-    @connection_thread.setter
-    def connection_thread(self, value):
-        """Set connection_thread through state for backward compatibility."""
-        self.state.connection_thread = value
-
-    @property
-    def loop(self):
-        """Access loop through state for backward compatibility."""
-        return self.state.loop
-
-    @loop.setter
-    def loop(self, value):
-        """Set loop through state for backward compatibility."""
-        self.state.loop = value
-
-    @property
-    def mcp_executor(self):
-        """Access mcp_executor through state for backward compatibility."""
-        return self.state.mcp_executor
-
-    @mcp_executor.setter
-    def mcp_executor(self, value):
-        """Set mcp_executor through state for backward compatibility."""
-        self.state.mcp_executor = value
-
-    @property
-    def chain(self):
-        """Access chain through state for backward compatibility."""
-        return self.state.chain
-
-    @property
-    def servers(self):
-        """Access servers through state for backward compatibility."""
-        return self.state.servers
-
     # Helper methods for action dispatch dictionary
 
     def _handle_jump_action(self, state: bool):
@@ -274,7 +148,7 @@ class MinecraftController:
 
     def _log_mcp_command(self, tool: str, parameters: Dict[str, Any]):
         """Log MCP command if logging is enabled"""
-        if self.enable_logging:
+        if self.state.enable_logging:
             mcp_command = {"tool": tool, "parameters": parameters}
             print(f"LOGGED: {mcp_command}")
 
@@ -356,55 +230,55 @@ class MinecraftController:
         try:
             uri = "ws://localhost:8081"
             print(f"Connecting to {uri}...")
-            self.websocket = await websockets.connect(uri)
-            self.connected = True
+            self.state.websocket = await websockets.connect(uri)
+            self.state.connected = True
             print("Connected to Minecraft Web Client!")
 
             # Register client based on mode
-            init_message = {"init": self.mode}
-            await self.websocket.send(json.dumps(init_message))
-            print(f"Registered as {self.mode} client")
+            init_message = {"init": self.state.mode}
+            await self.state.websocket.send(json.dumps(init_message))
+            print(f"Registered as {self.state.mode} client")
 
             # Keep connection alive
-            while self.connected and self.running:
+            while self.state.connected and self.state.running:
                 await asyncio.sleep(0.1)
 
         except Exception as e:
             print(f"Failed to connect: {e}")
-            self.connected = False
+            self.state.connected = False
 
     def start_websocket_connection(self):
         """Start WebSocket connection in a separate thread"""
 
         def run_async():
-            self.loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(self.loop)
-            self.loop.run_until_complete(self.connect_websocket())
+            self.state.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.state.loop)
+            self.state.loop.run_until_complete(self.connect_websocket())
 
-        self.connection_thread = threading.Thread(target=run_async, daemon=True)
-        self.connection_thread.start()
+        self.state.connection_thread = threading.Thread(target=run_async, daemon=True)
+        self.state.connection_thread.start()
 
     async def send_command_async(self, command: dict):
         """Async method to send command"""
-        if self.websocket and self.connected:
+        if self.state.websocket and self.state.connected:
             try:
-                await self.websocket.send(json.dumps(command))
+                await self.state.websocket.send(json.dumps(command))
                 print(f"Sent command: {command}")
             except Exception as e:
                 print(f"Error sending command: {e}")
-                self.connected = False
+                self.state.connected = False
 
     def send_command_sync(self, command: dict):
         """Send command instantly from main thread"""
-        if self.connected and self.loop and not self.loop.is_closed():
+        if self.state.connected and self.state.loop and not self.state.loop.is_closed():
             try:
                 future = asyncio.run_coroutine_threadsafe(
-                    self.send_command_async(command), self.loop
+                    self.send_command_async(command), self.state.loop
                 )
                 # Don't wait for the result to keep it instant
             except Exception as e:
                 print(f"Error sending command: {e}")
-                self.connected = False
+                self.state.connected = False
 
     def handle_movement(self, x: float, y: float):
         # Convert joystick coordinates to movement commands
@@ -414,11 +288,11 @@ class MinecraftController:
 
         # Only send if movement changed significantly
         if (
-            abs(movement_x - self.last_movement[0]) > 0.1
-            or abs(movement_z - self.last_movement[1]) > 0.1
+            abs(movement_x - self.state.last_movement[0]) > 0.1
+            or abs(movement_z - self.state.last_movement[1]) > 0.1
         ):
             self.strategy.handle_movement(movement_x, movement_z)
-            self.last_movement = (movement_x, movement_z)
+            self.state.last_movement = (movement_x, movement_z)
 
     def handle_camera_look(self, delta_x: int, delta_y: int):
         if delta_x != 0 or delta_y != 0:
@@ -431,7 +305,7 @@ class MinecraftController:
 
             # Only send WebSocket command in pygame mode
             # In MCP mode, LookPathTracker will handle conversion via callback
-            if self.mode == "pygame":
+            if self.state.mode == "pygame":
                 command = {"type": "look", "movementX": scaled_x, "movementY": scaled_y}
                 self.send_command_sync(command)
 
@@ -505,9 +379,6 @@ class MinecraftController:
             )
             self.state.current_hotbar_slot = slot
             self.state.last_hotbar_slot = slot
-            # Update backward compatibility properties
-            self.current_hotbar_slot = slot
-            self.last_hotbar_slot = slot
 
     def handle_drop_item(self):
         """Handle dropping 1 item from current hotbar slot"""
@@ -533,10 +404,10 @@ class MinecraftController:
 
     def execute_mcp_action(self, mcp_command):
         """Execute MCP-formatted action directly"""
-        if self.mcp_executor:
+        if self.state.mcp_executor:
             print(f"🎮 Executing: {mcp_command['tool']}({mcp_command['parameters']})")
             # Call the sync version that just captures the action
-            self.mcp_executor.capture_command(mcp_command)
+            self.state.mcp_executor.capture_command(mcp_command)
         else:
             print(
                 f"🎮 MCP Command (no executor): {mcp_command['tool']}({mcp_command['parameters']})"
@@ -544,7 +415,7 @@ class MinecraftController:
 
     def set_mcp_executor(self, executor):
         """Set the MCP command executor"""
-        self.mcp_executor = executor
+        self.state.mcp_executor = executor
 
     def convert_to_mcp_format(self, command_type, params):
         """Convert pygame commands to MCP format"""
@@ -604,7 +475,7 @@ class MinecraftController:
 
     def handle_other_commands(self, command_type, **params):
         """Execute non-look MCP commands directly"""
-        if self.mode == "mcp" and self.mcp_executor:
+        if self.state.mode == "mcp" and self.state.mcp_executor:
             # Simple mapping for clicks, movement, etc.
             mcp_command = self.convert_to_mcp_format(command_type, params)
             if mcp_command:
@@ -778,7 +649,7 @@ class MinecraftController:
         """Test getBotStatus at startup"""
         try:
             print("🧪 Testing getBotStatus at startup...")
-            result = await chain.tools_mapping["getBotStatus"]()
+            result = await self.state.chain.tools_mapping["getBotStatus"]()
             print(f"📊 Startup getBotStatus result: {result}")
         except Exception as e:
             print(f"❌ Startup getBotStatus failed: {e}")
@@ -811,7 +682,7 @@ class MinecraftController:
 
     def handle_test_status(self):
         """Handle test getBotStatus button click"""
-        if self.mode == "mcp" and self.chain and self.chain.tools_mapping:
+        if self.state.mode == "mcp" and self.state.chain and self.state.chain.tools_mapping:
             print("🧪 Manual getBotStatus test triggered!")
             # Create a task to run the test
             asyncio.create_task(self._trigger_get_bot_status())
@@ -821,18 +692,18 @@ class MinecraftController:
     async def _trigger_get_bot_status(self):
         """Trigger getBotStatus command asynchronously"""
         try:
-            result = await self.chain.tools_mapping["getBotStatus"]()
+            result = await self.state.chain.tools_mapping["getBotStatus"]()
             print(f"🎯 Manual getBotStatus result: {result}")
         except Exception as e:
             print(f"❌ Manual getBotStatus failed: {e}")
 
     def handle_save_demonstration(self):
         """Handle saving a demonstration step"""
-        if self.mode == "mcp" and self.mcp_executor:
+        if self.state.mode == "mcp" and self.state.mcp_executor:
             print("💾 Saving demonstration step...")
             # Generate a context description based on recent actions
             user_context = "exploring and performing actions"
-            success = self.mcp_executor.save_demonstration_step(user_context)
+            success = self.state.mcp_executor.save_demonstration_step(user_context)
             if success:
                 print("✅ Demonstration step saved successfully!")
             else:

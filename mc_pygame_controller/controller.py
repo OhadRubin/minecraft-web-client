@@ -121,13 +121,13 @@ async def handle_interactive_session(
 
     try:
         # Run until controller signals to stop
-        while controller.running:
+        while controller.state.running:
             await asyncio.sleep(0.1)
 
     except KeyboardInterrupt:
         print("Interrupted by user")
     finally:
-        controller.running = False
+        controller.state.running = False
 
         # Save any remaining demonstration data
         trajectory = interface.stop_trajectory_recording()

@@ -59,7 +59,7 @@ class PygameModeStrategy(ModeStrategy):
         self.controller.send_command_sync(command)
         
         # Log movement in pygame mode if logging enabled
-        if self.controller.enable_logging and (abs(x) > 0.1 or abs(z) > 0.1):
+        if self.controller.state.enable_logging and (abs(x) > 0.1 or abs(z) > 0.1):
             # Calculate duration based on movement magnitude (same as MCP mode)
             magnitude = (x**2 + z**2) ** 0.5
             duration = int(magnitude * 2000)  # Scale to reasonable duration
@@ -109,12 +109,12 @@ class MCPModeStrategy(ModeStrategy):
     def handle_movement(self, x: float, z: float):
         """Convert movement to walk command with timing control."""
         # Only send walk command if enough time has passed (avoid spamming)
-        if time.time() - self.controller.last_moved_in_mcp_mode > 2:
+        if time.time() - self.controller.state.last_moved_in_mcp_mode > 2:
             # Calculate duration based on movement magnitude
             magnitude = (x**2 + z**2) ** 0.5
             # Use a fixed duration for consistency (calculated_duration could be used for scaling)
             self.handle_simple_action("walk", duration=1000)
-            self.controller.last_moved_in_mcp_mode = time.time()
+            self.controller.state.last_moved_in_mcp_mode = time.time()
     
     def handle_timed_action(
         self, 
