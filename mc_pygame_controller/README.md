@@ -843,3 +843,210 @@ This controller is part of a complete research pipeline:
 - **Transfer Learning** → Apply 3D reasoning skills to other domains
 
 This architecture provides a robust foundation for both human-controlled and AI-driven Minecraft gameplay, with comprehensive demonstration capture capabilities for training autonomous agents in 3D spatial reasoning.
+
+
+# Debugging Continuous Streaming Regression in Minecraft Controller
+
+## Overview
+
+This document captures the key learnings from debugging and fixing a regression in the Minecraft pygame controller where the refactor from explicit control flow to a dispatch dictionary pattern broke continuous streaming behavior for real-time controls.
+
+## The Original Question
+
+**Question**: "How is left click in MCP mode different from pygame mode in mc_pygame_controller/controller_base.py?"
+
+**Answer**: The fundamental difference is in the execution model:
+- **Pygame Mode**: Real-time continuous streaming (60 FPS WebSocket commands)
+- **MCP Mode**: Discrete event-driven tool calls with duration parameters
+
+## The Regression Discovery
+
+### What We Found
+While examining the code to answer the original question, we discovered that a recent refactor had **broken continuous streaming behavior** in pygame mode.
+
+### The Refactor Changes
+**Before** (working):
+```python
+while self.running:
+    # Process discrete actions
+    self._process_ui_actions(ui_actions + keyboard_actions)
+    
+    # CRITICAL: Check keyboard edge detection EVERY FRAME
+    self._handle_keyboard_shortcuts_edge_detection(keys_pressed)
+```
+
+**After** (broken):
+```python
+def _process_frame(self):
+    # Process discrete actions only
+    self._process_ui_actions(ui_actions + keyboard_actions)
+    # MISSING: No keyboard edge detection!
+    # MISSING: No continuous state processing!
+```
+
+## The Core Problems Identified
+
+### 1. **Missing Edge Detection**
+- **Problem**: `_handle_keyboard_shortcuts_edge_detection()` was removed entirely
+- **Impact**: Keyboard shortcuts (Q, E, F, 1-9 keys) stopped working
+- **Root Cause**: Edge detection requires frame-by-frame comparison of key states
+
+### 2. **Lost Continuous Streaming**
+- **Problem**: Architecture changed from **state-based continuous streaming** to **event-driven discrete actions**
+- **Impact**: Left click no longer sent continuous commands while held
+- **Root Cause**: Real-time controls need streaming, not just press/release events
+
+### 3. **Flow Frequency Change**
+- **Problem**: Processing moved from "every frame" to "only when UI manager detects changes"
+- **Impact**: Missed quick key presses, broken timing-sensitive actions
+- **Root Cause**: UI manager optimized for discrete events, not continuous state polling
+
+## The Dual Nature Problem
+
+### Minecraft Controls Need Both:
+1. **Discrete Actions**: Inventory, drop item, hotbar selection (event-driven)
+2. **Continuous Streaming**: Mining, building, movement (state-based)
+
+### The Failed Architecture:
+The refactor tried to handle everything as discrete actions:
+```python
+# This dispatch pattern works for discrete actions...
+"left_click": self.handle_left_click,
+"inventory_pressed": lambda _: self.handle_inventory(),
+
+# ...but breaks continuous streaming
+```
+
+## The Solution: Dual Processing
+
+### Minimal Fix Strategy
+Instead of reverting the entire refactor, we implemented **dual processing**:
+
+```python
+def _process_frame(self):
+    # Process discrete actions (new system - keep this)
+    ui_actions = self.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed)
+    self._process_ui_actions(ui_actions + keyboard_actions)
+    
+    # Process continuous state (restored behavior)
+    self._process_continuous_state(mouse_pos, mouse_pressed, keys_pressed)
+    
+    # Handle keyboard edge detection (restored behavior)
+    self._handle_keyboard_shortcuts_edge_detection(keys_pressed)
+```
+
+### What Each System Handles:
+
+**Discrete Action System** (dispatch dictionary):
+- Button presses/releases
+- Menu toggles  
+- One-time actions
+- UI state changes
+
+**Continuous State System** (frame-by-frame):
+- Button holds (mining/building)
+- Movement streaming
+- Real-time controls
+
+**Edge Detection System** (frame-by-frame):
+- Keyboard shortcuts
+- Press/release transitions
+- Timing-sensitive inputs
+
+## Implementation Details
+
+### Left Click Continuous Streaming Fix
+```python
+def _process_continuous_state(self, mouse_pos, mouse_pressed, keys_pressed):
+    if self.state.mode != "pygame":
+        return
+        
+    # Send continuous commands while button held
+    left_click_state = self.state.action_states.get("left_click", {})
+    if left_click_state.get("active", False):
+        command = {
+            "type": "documentMouseEvent",
+            "button": 0, 
+            "action": "down",
+            "updateMouse": True
+        }
+        self.send_command_sync(command)  # Sent every frame (60 FPS)
+```
+
+### Keyboard Edge Detection Fix
+```python
+def _handle_keyboard_shortcuts_edge_detection(self, keys_pressed):
+    # Handle hotbar slots (1-9)
+    for i, key in enumerate([pygame.K_1, pygame.K_2, ...]):
+        key_name = f"hotbar_{i}"
+        just_pressed, just_released = self._detect_key_edge(key_name, keys_pressed[key])
+        if just_pressed:
+            self.handle_hotbar_slot(i)
+    
+    # Handle drop item (Q), swap hands (F), inventory (E)
+    # ... similar edge detection logic
+```
+
+## Key Learnings
+
+### 1. **Architecture Patterns Have Trade-offs**
+- **Dispatch Dictionary**: Clean, maintainable, good for discrete events
+- **State Polling**: Verbose, but essential for real-time streaming
+
+### 2. **Real-time Systems Need Continuous Processing**
+- Some game controls inherently require streaming (mining, movement)
+- You can't abstract this away with event-driven patterns
+
+### 3. **Edge Detection Requires Frame-by-Frame Logic**
+- Detecting key press transitions needs state comparison every frame
+- UI managers optimized for events may miss quick presses
+
+### 4. **Dual Processing Can Preserve Both Architectures**
+- Keep new clean architecture for appropriate use cases
+- Add back specialized systems for requirements they can't handle
+
+### 5. **Mode Differences Are Fundamental**
+- **Pygame Mode**: Real-time streaming (continuous commands)
+- **MCP Mode**: Semantic actions (duration-based tool calls)
+- Don't try to unify fundamentally different interaction models
+
+## Testing Results
+
+### Before Fix:
+```
+AttributeError: 'VirtualJoystick' object has no attribute 'get_value'
+```
+
+### After Fix:
+```
+Starting Minecraft Controller in PYGAME mode...
+Connected to Minecraft Web Client!
+Registered as pygame client
+✅ Left click continuous streaming works
+✅ Keyboard shortcuts (Q, E, F, 1-9) work  
+✅ Movement already worked (UI manager handled it properly)
+```
+
+## Code Quality Impact
+
+### Preserved Benefits:
+- ✅ Dispatch dictionary pattern for discrete actions
+- ✅ Clean separation of concerns
+- ✅ Strategy pattern for mode differences
+- ✅ Centralized state management
+
+### Added Back:
+- ✅ Continuous streaming for real-time controls
+- ✅ Frame-by-frame edge detection for keyboards
+- ✅ Proper pygame mode behavior
+
+### Minimal Changes:
+- 2 new method calls in `_process_frame()`
+- 2 new methods (~30 lines total)
+- No breaking changes to existing architecture
+
+## Conclusion
+
+This debugging session demonstrates that **different interaction models require different processing patterns**. While the dispatch dictionary refactor was architecturally sound for discrete actions, real-time game controls have inherent streaming requirements that can't be abstracted away.
+
+The solution wasn't to choose one pattern over another, but to **use both patterns for their appropriate use cases** within a unified framework. 
