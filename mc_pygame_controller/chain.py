@@ -10,14 +10,24 @@ import httpx
 import mimetypes
 from openai import AsyncOpenAI
 from pydantic import BaseModel
-from .chain_utils import (
-    chain_method,
-    encode_base64_content_from_url,
-    _encode_to_data_uri,
-    _resolve_multimodal_args,
-    _resolve_multimodal_output,
-)
-from .conversation import Message
+try:
+    from .chain_utils import (
+        chain_method,
+        encode_base64_content_from_url,
+        _encode_to_data_uri,
+        _resolve_multimodal_args,
+        _resolve_multimodal_output,
+    )
+    from .conversation import Message
+except ImportError:
+    from chain_utils import (
+        chain_method,
+        encode_base64_content_from_url,
+        _encode_to_data_uri,
+        _resolve_multimodal_args,
+        _resolve_multimodal_output,
+    )
+    from conversation import Message
 
 @dataclass(frozen=True)
 class PygameMCPAsyncMessageChain:
