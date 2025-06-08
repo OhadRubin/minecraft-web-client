@@ -106,34 +106,38 @@ The WebSocket server manages three distinct client types:
 The controller is built on a modular architecture that separates concerns like state management, UI, and mode-specific logic.
 
 #### 1. State Management (`controller_state.py`)
-- **`ControllerState`**: A centralized dataclass that holds all runtime state for the controller. This includes the current mode (`pygame` or `mcp`), connection status, hotbar selection, movement values, and detailed states for all actions (e.g., button presses, toggles). This refactoring improves organization and simplifies state sharing between components.
+- **`ControllerState`**: A centralized dataclass that holds all runtime state for the controller. This includes the current mode (`pygame` or `mcp`), connection status, hotbar selection, movement values, and detailed states for all actions (e.g., button presses, toggles). This provides clean state sharing between components.
 
 #### 2. UI Layer (`ui_manager.py`, `ui_elements.py`, `ui_layout_config.py`)
 - **`UIManager`**: Manages all UI components, input processing, and rendering. It acts as a single point of contact for the UI, decoupling the main controller from the complexities of drawing and event handling. It processes user inputs and returns a list of intended actions.
 - **`ui_elements.py`**: A library of custom Pygame widgets, including `Button`, `ToggleButton`, `VirtualJoystick`, `KeyboardMovement`, and `TouchArea`.
 - **`ui_layout_config.py`**: A data-driven configuration file that defines the position, size, and properties of all UI elements. This allows for easy layout customization without modifying the core logic.
 
-#### 3. Controller & Strategy Layer (`controller_base.py`, `mode_strategy.py`)
-- **`MinecraftController` (`controller_base.py`)**: The main controller class. It initializes all components (State, UI, Strategy) and runs the main game loop (`_process_frame`). It dispatches actions returned by the `UIManager` to the appropriate handlers and delegates mode-specific behavior to its current strategy object.
-- **`ModeStrategy` (`mode_strategy.py`)**: Implements the Strategy Pattern to eliminate complex `if/else` statements for mode-specific logic.
-    - **`PygameModeStrategy`**: Handles actions for `pygame` mode by sending commands directly to the Minecraft client via WebSocket.
-    - **`MCPModeStrategy`**: Handles actions for `mcp` mode by converting them into MCP tool calls for data collection and AI control.
+#### 3. Action Processing Layer (`action_handler.py`)
+- **`ActionHandler`**: Dedicated class for processing all user actions. Contains the action dispatch dictionary and all `handle_*` methods (movement, clicks, jumps, inventory, etc.). This separation allows the main controller to focus purely on orchestration while the ActionHandler manages the specifics of each game action.
+- **Dispatch Pattern**: Uses a clean dictionary-based dispatch system to route actions to appropriate handlers, eliminating complex conditional logic.
 
-#### 4. Demonstration & AI Integration Layer (`interface.py`, `chain.py`, `conversation.py`)
+#### 4. Controller & Strategy Layer (`controller_base.py`, `mode_strategy.py`)
+- **`MinecraftController` (`controller_base.py`)**: The main orchestration class. Initializes all components (State, UI, ActionHandler, Strategy) and runs the main game loop (`_process_frame`). Delegates all mode-specific behavior to its current strategy object.
+- **`ModeStrategy` (`mode_strategy.py`)**: Implements the Strategy Pattern to completely eliminate mode-specific `if/else` statements.
+    - **`PygameModeStrategy`**: Handles real-time continuous streaming for `pygame` mode, sending WebSocket commands directly to Minecraft client. Includes continuous movement streaming and button hold processing.
+    - **`MCPModeStrategy`**: Handles discrete action processing for `mcp` mode, converting actions into MCP tool calls for data collection and AI control.
+
+#### 5. Demonstration & AI Integration Layer (`interface.py`, `chain.py`, `conversation.py`)
 - **`MinecraftControllerInterface` (`interface.py`)**: The primary bridge for capturing human demonstrations. In MCP mode, it receives actions, executes them via the `tools_mapping`, and records them.
 - **`TrajectoryStorage` (`interface.py`)**: Stores the captured sequences of human actions as structured JSON trajectories, ready for use as AI training data.
 - **`PygameMCPAsyncMessageChain` (`chain.py`)**: A data structure for managing the conversation with an AI model. It's designed to be compatible with the OpenAI API format, supporting tool calls and multimodal content.
 - **`ConversationPanel` (`conversation.py`)**: Manages the sequence of messages. Crucially, it can convert a series of captured human actions into a "mock" LLM response containing `tool_calls`, which is the core mechanism for generating training data from demonstrations.
 
-#### 5. MCP Client Layer (`mcp_client.py`)
+#### 6. MCP Client Layer (`mcp_client.py`)
 - **`Server`**: Manages the lifecycle of an MCP server subprocess, communicating via `stdio`. It handles server initialization, tool discovery, and cleanup.
 - **`create_tool_functions`**: A key utility that inspects an MCP server's available tools and dynamically creates asynchronous Python functions to call them. This provides a clean programming interface for interacting with AI tools.
 
-#### 6. Specialized Logic (`look_path.py`)
+#### 7. Specialized Logic (`look_path.py`)
 - **`LookPathTracker`**: A sophisticated system for analyzing camera movement. It captures mouse drag gestures, calculates total rotation in degrees, and generates discrete `lookAngle` MCP tool calls. This translates continuous human input into a meaningful, trainable AI action.
 - **`LookPathVisualizationArea`**: A real-time UI component that visualizes the path and statistics of a camera drag operation.
 
-#### 7. Entrypoint (`controller.py`)
+#### 8. Entrypoint (`controller.py`)
 - This script serves as the main entrypoint for running the controller. It parses command-line arguments (like `--mcp` and `--sensitivity`), initializes the necessary servers for MCP mode, and launches the appropriate controller session.
 
 ### Human-to-LLM Action Translation System
@@ -670,8 +674,9 @@ The system provides a novel 3D spatial reasoning tool accessed via MCP integrati
 - **Real-time analysis**: Live angle statistics and compass direction display
 
 ### Dual-Mode Architecture
-- **Unified UI**: Same interface works for both human and AI control
-- **Mode-specific command routing**: pygame commands vs MCP tool calls
+- **Unified UI**: Same interface works for both human and AI control  
+- **Strategy Pattern**: Complete mode separation with no conditional logic in controller
+- **Continuous vs Discrete**: Real-time streaming for pygame, discrete actions for MCP
 - **Seamless switching**: Can switch between modes without restart
 
 ### MCP Integration Infrastructure
@@ -682,9 +687,11 @@ The system provides a novel 3D spatial reasoning tool accessed via MCP integrati
 
 ### Comprehensive Input Handling
 - **Multi-input support**: Mouse, keyboard, and virtual controls
-- **Hotbar management**: Visual slot selection with state tracking
+- **Hotbar management**: Visual slot selection with state tracking  
 - **Action buttons**: All essential Minecraft controls (jump, sneak, sprint, inventory, etc.)
 - **Movement controls**: Both virtual joystick and WASD keyboard input
+- **Continuous streaming**: Real-time movement and button hold processing in pygame mode
+- **Action dispatch**: Clean dictionary-based routing to appropriate handlers
 
 ## Configuration
 
