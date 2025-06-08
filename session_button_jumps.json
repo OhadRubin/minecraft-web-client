@@ -1,0 +1,7 @@
+{
+  "task": "Testing jump button",
+  "actions": [
+    {"tool": "jump", "parameters": {"duration": "short"}},
+    {"tool": "getBotStatus"}
+  ]
+}
