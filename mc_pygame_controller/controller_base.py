@@ -396,36 +396,8 @@ class MinecraftController:
         return True  # Continue running
 
     def _process_continuous_state(self, mouse_pos, mouse_pressed, keys_pressed):
-        """Process continuous state that needs streaming every frame (RESTORED)"""
-        # This ensures continuous streaming for held inputs that need constant updates
-        # NOTE: This complements the discrete action system with continuous state processing
-        # Movement is already handled properly by the UI manager, so we focus on button holds
-
-        # Only process continuous streaming in pygame mode
-        if self.state.mode != "pygame":
-            return
-
-        # Check for continuous button holds (mining/building)
-        # In pygame mode, we need to send continuous "button held" commands
-        left_click_state = self.state.action_states.get("left_click", {})
-        if left_click_state.get("active", False):
-            # Left click is being held - send continuous mining command
-            command = {
-                "type": "documentMouseEvent",
-                "button": 0,
-                "action": "down",
-                "updateMouse": True,
-            }
-            self.send_command_sync(command)
-
-        right_click_state = self.state.action_states.get("right_click", {})
-        if right_click_state.get("active", False):
-            # Right click is being held - send continuous right click command
-            command = {"type": "rightDown"}
-            self.send_command_sync(command)
-
-        # NOTE: Movement streaming is already handled properly by the UI manager
-        # in process_inputs() -> handle_movement() flow, so we don't duplicate it here
+        """Delegate continuous state processing to strategy."""
+        self.strategy.process_continuous_state(mouse_pos, mouse_pressed, keys_pressed)
 
     def run(self):
         print(f"Starting Minecraft Controller in {self.state.mode.upper()} mode...")
