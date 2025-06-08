@@ -18,7 +18,7 @@ import websockets
 import threading
 import sys
 import argparse
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Callable, List, Tuple
 import time
 
 import pygame
@@ -32,6 +32,9 @@ from .ui_elements import (
     KeyboardMovement,
     TouchArea,
 )
+from .mode_strategy import ModeStrategy, PygameModeStrategy, MCPModeStrategy
+from .ui_manager import UIManager
+from .controller_state import ControllerState
 import argparse
 
 
@@ -40,13 +43,22 @@ class MinecraftController:
     def __init__(
         self, mode="pygame", chain_args=None, sensitivity=5.0, enable_logging=False
     ):
-        self.mode = mode  # "pygame" or "mcp"
-        self.sensitivity = sensitivity  # Mouse sensitivity for MCP mode
-        self.enable_logging = enable_logging  # Enable logging in pygame mode
+        # Initialize centralized state
+        self.state = ControllerState(
+            mode=mode,
+            sensitivity=sensitivity,
+            enable_logging=enable_logging
+        )
+        
+        # For backward compatibility, keep direct access to commonly used properties
+        self.mode = self.state.mode
+        self.sensitivity = self.state.sensitivity
+        self.enable_logging = self.state.enable_logging
+        self.running = self.state.running
+        
         self.screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
         pygame.display.set_caption("Minecraft Web Client Controller")
         self.clock = pygame.time.Clock()
-        self.running = True
 
         # Look path tracking
         self.look_path_tracker = LookPathTracker(
@@ -63,194 +75,42 @@ class MinecraftController:
             self.servers = []
             self.chain = None
 
-        # UI Elements
-        self.movement_joystick = VirtualJoystick(
-            150, WINDOW_HEIGHT - 200, 100
-        )  # Larger joystick, adjusted position
-        self.keyboard_movement = KeyboardMovement()
-        self.camera_area = TouchArea(
-            400, 50, 800, 500
-        )  # Much larger camera area: 800x500
-
-        # Initialize UI buttons
-        self._init_ui_buttons()
-
-        # State tracking for hotbar
-        self.current_hotbar_slot = 0  # Currently selected slot (0-8)
-        self.last_hotbar_slot = -1  # Track last set slot to avoid duplicate commands
-
-        # WebSocket connection
-        self.websocket: Optional[websockets.WebSocketServerProtocol] = None
-        self.connected = False
-        self.connection_thread = None
-        self.loop = None  # Store the event loop for cross-thread communication
-
-        # State tracking
-        self.last_movement = (0.0, 0.0)
-
-        # Action state tracking with timing
-        self._action_states = {
-            "left_click": {"active": False, "start_time": None},
-            "right_click": {"active": False, "start_time": None},
-            "jump": {"active": False, "start_time": None},
-            "sneak": {"active": False},
-            "sprint": {"active": False},
-        }
-
-        # MCP mode movement tracking
-        self.last_moved_in_mcp_mode = 0
-
-        self.font = pygame.font.Font(None, 36)
-        self.small_font = pygame.font.Font(None, 24)
-
-        # Mouse tracking state for camera area
-        self.camera_was_touching = False
-
-        # Keyboard shortcut states - using a dictionary for cleaner management
-        self._key_states = {
-            "ctrl": False,
-            "tab": False,
-            "z": False,
-            "x": False,
-            "space": False,
-            "q": False,
-            "f": False,
-            "c": False,
-        }
-
-        # Key press tracking for edge detection
-        self._last_key_states = {}
-
-        # MCP execution state (mode-independent)
-        self.mcp_executor = None
+        # For backward compatibility, provide direct access to state properties
+        self.current_hotbar_slot = 0  # Will be updated to use state
+        self.last_hotbar_slot = -1  # Will be updated to use state
+        self.websocket = None  # Will be updated to use state
+        self.connected = False  # Will be updated to use state
+        self.connection_thread = None  # Will be updated to use state
+        self.loop = None  # Will be updated to use state
+        self.last_movement = (0.0, 0.0)  # Will be updated to use state
+        self._action_states = self.state.action_states
+        self.last_moved_in_mcp_mode = self.state.last_moved_in_mcp_mode
+        self.camera_was_touching = False  # Will be updated to use state
+        self._key_states = self.state.key_states
+        self._last_key_states = self.state.last_key_states
+        self.mcp_executor = self.state.mcp_executor
 
         # Connect LookPathTracker for MCP mode
         if self.mode == "mcp":
             self.look_path_tracker.set_execution_callback(self.execute_mcp_action)
 
+        # Initialize mode strategy
+        if self.mode == "pygame":
+            self.strategy = PygameModeStrategy(self)
+        elif self.mode == "mcp":
+            self.strategy = MCPModeStrategy(self)
+        else:
+            raise ValueError(f"Unknown mode: {self.mode}")
+
+        # Initialize UI Manager
+        self.ui_manager = UIManager(self.screen, self.state, self.look_path_tracker, self.look_visualization)
+
         # Asyncio integration (following asyncio_pygame_example.py pattern)
-        self.event_loop = None
-        self.event_queue = None
-        self.command_queue = None
-        self.result_queue = None  # Queue for MCP results
+        self.event_loop = self.state.event_loop
+        self.event_queue = self.state.event_queue
+        self.command_queue = self.state.command_queue
+        self.result_queue = self.state.result_queue
 
-    def _init_ui_buttons(self):
-        """Initialize all UI buttons with consistent layout"""
-        # Action Buttons
-        button_width = 100  # Slightly larger buttons
-        button_height = 40
-        start_x = 1300  # Moved further right for larger window
-        start_y = 600  # Moved down to avoid camera area
-        spacing = 50
-
-        self.left_click_btn = Button(
-            start_x, start_y, button_width, button_height, "Left Click", RED
-        )
-        self.right_click_btn = Button(
-            start_x + 90, start_y, button_width, button_height, "Right Click", BLUE
-        )
-
-        self.jump_btn = Button(
-            start_x, start_y + spacing, button_width, button_height, "Jump", GREEN
-        )
-        self.sneak_btn = ToggleButton(
-            start_x + 90,
-            start_y + spacing,
-            button_width,
-            button_height,
-            "Sneak",
-            ORANGE,
-        )
-
-        self.sprint_btn = ToggleButton(
-            start_x,
-            start_y + spacing * 2,
-            button_width,
-            button_height,
-            "Sprint",
-            PURPLE,
-        )
-        self.inventory_btn = ToggleButton(
-            start_x + 90,
-            start_y + spacing * 2,
-            button_width,
-            button_height,
-            "Inventory",
-            GRAY,
-        )
-
-        # New buttons for item management
-        self.drop_btn = Button(
-            start_x,
-            start_y + spacing * 3,
-            button_width,
-            button_height,
-            "Drop Item",
-            YELLOW,
-        )
-        self.swap_hands_btn = Button(
-            start_x + 90,
-            start_y + spacing * 3,
-            button_width,
-            button_height,
-            "Swap Hands",
-            (255, 100, 255),  # Pink/magenta
-        )
-
-        # Add clear path button
-        self.clear_path_btn = Button(
-            start_x,
-            start_y + spacing * 4,
-            button_width * 2 + 10,  # Wider button
-            button_height,
-            "Clear Look Path",
-            (150, 75, 0),  # Brown color
-        )
-
-        # Add getBotStatus test button
-        self.test_status_btn = Button(
-            start_x,
-            start_y + spacing * 5,
-            button_width * 2 + 10,  # Wider button
-            button_height,
-            "Test getBotStatus",
-            (0, 150, 75),  # Teal color
-        )
-
-        # Add save demonstration button (MCP mode only)
-        self.save_demo_btn = Button(
-            start_x,
-            start_y + spacing * 6,
-            button_width * 2 + 10,  # Wider button
-            button_height,
-            "Save Demo Step",
-            (150, 0, 150),  # Purple color
-        )
-
-        # Hotbar Slot Buttons (1-9)
-        self._init_hotbar_buttons()
-
-    def _init_hotbar_buttons(self):
-        """Initialize hotbar buttons"""
-        hotbar_button_width = 50
-        hotbar_button_height = 40
-        hotbar_start_x = 50
-        hotbar_y = WINDOW_HEIGHT - 60  # Bottom of screen
-        hotbar_spacing = 55
-
-        self.hotbar_buttons = []
-        for i in range(9):
-            slot_number = i + 1  # Display 1-9 for user, but use 0-8 internally
-            button = Button(
-                hotbar_start_x + i * hotbar_spacing,
-                hotbar_y,
-                hotbar_button_width,
-                hotbar_button_height,
-                str(slot_number),
-                DARK_GRAY,
-                WHITE,
-            )
-            self.hotbar_buttons.append(button)
 
     def _calculate_duration(self, start_time: Optional[float]) -> str:
         """Calculate duration string from start time - updated with more options"""
@@ -294,9 +154,6 @@ class MinecraftController:
         if pressed and not state["active"]:
             print(f"{action_name.upper()} DOWN - sending command")
             state["start_time"] = time.time()
-
-            if self.mode == "pygame":
-                self.send_command_sync(pygame_down_cmd)
             state["active"] = True
 
         elif not pressed and state["active"]:
@@ -305,22 +162,15 @@ class MinecraftController:
             duration = self._calculate_duration(state["start_time"])
             state["start_time"] = None
 
-            if self.mode == "pygame":
-                self.send_command_sync(pygame_up_cmd)
-                # Log the action in pygame mode
-                mcp_params = (
-                    mcp_params_func(duration)
-                    if mcp_params_func
-                    else {"duration": duration}
-                )
-                self._log_mcp_command(mcp_tool, mcp_params)
-            else:  # mcp mode
-                mcp_params = (
-                    mcp_params_func(duration)
-                    if mcp_params_func
-                    else {"duration": duration}
-                )
-                self.handle_other_commands(mcp_tool, **mcp_params)
+            # Use strategy to handle the action
+            kwargs = mcp_params_func(duration) if mcp_params_func else {}
+            self.strategy.handle_timed_action(
+                mcp_tool, 
+                duration, 
+                pygame_down_cmd=pygame_down_cmd,
+                pygame_up_cmd=pygame_up_cmd,
+                **kwargs
+            )
 
             state["active"] = False
 
@@ -331,13 +181,7 @@ class MinecraftController:
         state = self._action_states[action_name]
 
         if toggled != state["active"]:
-            if self.mode == "pygame":
-                self.send_command_sync(
-                    {"type": "control", "control": pygame_control, "state": toggled}
-                )
-                self._log_mcp_command(mcp_tool, {"state": toggled})
-            else:  # mcp mode
-                self.handle_other_commands(mcp_tool, state=toggled)
+            self.strategy.handle_toggle_action(mcp_tool, toggled, pygame_control)
             state["active"] = toggled
 
     def _detect_key_edge(self, key_name: str, current_state: bool) -> tuple[bool, bool]:
@@ -352,7 +196,7 @@ class MinecraftController:
 
     def _handle_camera_drag_state(self, mouse_pressed: bool):
         """Handle camera drag state changes for look tracking"""
-        camera_is_clicking = self.camera_area.is_touching and mouse_pressed
+        camera_is_clicking = self.ui_manager.camera_area.is_touching and mouse_pressed
         prev_clicking = getattr(self, "camera_was_clicking", False)
 
         if camera_is_clicking != prev_clicking:
@@ -434,30 +278,7 @@ class MinecraftController:
             abs(movement_x - self.last_movement[0]) > 0.1
             or abs(movement_z - self.last_movement[1]) > 0.1
         ):
-            if self.mode == "pygame":
-                command = {"type": "move", "x": movement_x, "z": movement_z}
-                self.send_command_sync(command)
-
-                # Log movement in pygame mode if logging enabled
-                if self.enable_logging and (
-                    abs(movement_x) > 0.1 or abs(movement_z) > 0.1
-                ):
-                    # Calculate duration based on movement magnitude (same as MCP mode)
-                    magnitude = (movement_x**2 + movement_z**2) ** 0.5
-                    duration = int(magnitude * 2000)  # Scale to reasonable duration
-                    self._log_mcp_command("walk", {"duration": duration})
-
-            else:  # mcp mode
-                # Convert movement to walk command
-                # if abs(movement_x) > 0.1 or abs(movement_z) > 0.1:
-                # Only send walk command if enough time has passed (avoid spamming)
-                if time.time() - self.last_moved_in_mcp_mode > 2:
-                    # Calculate duration based on movement magnitude
-                    magnitude = (movement_x**2 + movement_z**2) ** 0.5
-                    duration = int(magnitude * 20000)  # Scale to reasonable duration
-                    self.handle_other_commands("walk", duration=1000)
-                    self.last_moved_in_mcp_mode = time.time()
-
+            self.strategy.handle_movement(movement_x, movement_z)
             self.last_movement = (movement_x, movement_z)
 
     def handle_camera_look(self, delta_x: int, delta_y: int):
@@ -492,7 +313,7 @@ class MinecraftController:
                 "action": "up",
                 "updateMouse": False,
             },
-            "left_click",
+            "leftClick",
         )
 
     def handle_right_click(self, pressed: bool):
@@ -529,53 +350,42 @@ class MinecraftController:
 
     def handle_inventory(self):
         # Send inventory command (toggle)
-        if self.mode == "pygame":
-            command = {"type": "inventory"}
-            self.send_command_sync(command)
-
-            self._log_mcp_command("toggleInventory", {})
-
-        else:  # mcp mode
-            self.handle_other_commands("toggleInventory")
+        self.strategy.handle_simple_action(
+            "toggleInventory", 
+            pygame_cmd={"type": "inventory"}
+        )
 
     def handle_hotbar_slot(self, slot: int):
         """Handle hotbar slot selection (slot should be 0-8)"""
-        if 0 <= slot <= 8 and slot != self.last_hotbar_slot:
+        if 0 <= slot <= 8 and slot != self.state.last_hotbar_slot:
             print(f"HOTBAR SLOT {slot + 1} - sending command")
-            if self.mode == "pygame":
-                command = {"type": "setHotbarSlot", "slot": slot}
-                self.send_command_sync(command)
-
-                self._log_mcp_command("setHotbarSlot", {"slot": slot})
-
-            else:
-                self.handle_other_commands("setHotbarSlot", slot=slot)
+            self.strategy.handle_simple_action(
+                "setHotbarSlot",
+                pygame_cmd={"type": "setHotbarSlot", "slot": slot},
+                slot=slot
+            )
+            self.state.current_hotbar_slot = slot
+            self.state.last_hotbar_slot = slot
+            # Update backward compatibility properties
             self.current_hotbar_slot = slot
             self.last_hotbar_slot = slot
 
     def handle_drop_item(self):
         """Handle dropping 1 item from current hotbar slot"""
         print("DROP ITEM - sending command")
-        if self.mode == "pygame":
-            command = {"type": "dropItem", "amount": 1}
-            self.send_command_sync(command)
-
-            self._log_mcp_command("dropItem", {"amount": 1})
-
-        else:  # mcp mode
-            self.handle_other_commands("dropItem", amount=1)
+        self.strategy.handle_simple_action(
+            "dropItem",
+            pygame_cmd={"type": "dropItem", "amount": 1},
+            amount=1
+        )
 
     def handle_swap_hands(self):
         """Handle swapping main hand and off-hand items"""
         print("SWAP HANDS - sending command")
-        if self.mode == "pygame":
-            command = {"type": "swapHands"}
-            self.send_command_sync(command)
-
-            self._log_mcp_command("swapHands", {})
-
-        else:  # mcp mode
-            self.handle_other_commands("swapHands")
+        self.strategy.handle_simple_action(
+            "swapHands",
+            pygame_cmd={"type": "swapHands"}
+        )
 
     def handle_clear_path(self):
         """Handle clearing the look path"""
@@ -600,12 +410,12 @@ class MinecraftController:
     def convert_to_mcp_format(self, command_type, params):
         """Convert pygame commands to MCP format"""
         # Simple mapping for clicks, movement, etc.
-        if command_type == "left_click":
+        if command_type == "left_click" or command_type == "leftClick":
             return {
                 "tool": "leftClick",
                 "parameters": {"duration": params.get("duration", "medium")},
             }
-        elif command_type == "right_click":
+        elif command_type == "right_click" or command_type == "rightClick":
             return {
                 "tool": "rightClick",
                 "parameters": {"duration": params.get("duration", "medium")},
@@ -661,141 +471,18 @@ class MinecraftController:
             if mcp_command:
                 self.execute_mcp_action(mcp_command)
 
-    def draw_ui(self):
-        self.screen.fill(BLACK)
-
-        # Draw title
-        title = self.font.render("Minecraft Web Client Controller", True, WHITE)
-        self.screen.blit(title, (10, 10))
-
-        # Draw connection status
-        status_color = GREEN if self.connected else RED
-        status_text = "Connected" if self.connected else "Disconnected"
-        status = self.small_font.render(f"Status: {status_text}", True, status_color)
-        self.screen.blit(status, (10, 50))
-
-        # Draw mode status
-        mode_text = f"Mode: {self.mode.upper()}"
-        mode_color = BLUE if self.mode == "mcp" else WHITE
-        mode = self.small_font.render(mode_text, True, mode_color)
-        self.screen.blit(mode, (10, 75))
-
-        # Draw movement joystick
-        self.movement_joystick.draw(self.screen)
-        move_label = self.small_font.render("Movement", True, WHITE)
-        self.screen.blit(
-            move_label,
-            (
-                self.movement_joystick.center_x - 40,
-                self.movement_joystick.center_y + 120,  # Adjusted for larger joystick
-            ),
-        )
-
-        # Draw camera area
-        self.camera_area.draw(self.screen)
-
-        # Draw look path visualization
-        self.look_visualization.draw(self.screen, self.look_path_tracker)
-
-        # Add label for look visualization
-        look_label = self.small_font.render("Look Path Visualization", True, WHITE)
-        self.screen.blit(look_label, (1230, 30))
-
-        # Draw action buttons
-        self.left_click_btn.draw(self.screen)
-        self.right_click_btn.draw(self.screen)
-        self.jump_btn.draw(self.screen)
-        self.sneak_btn.draw(self.screen)
-        self.sprint_btn.draw(self.screen)
-        self.inventory_btn.draw(self.screen)
-        self.drop_btn.draw(self.screen)
-        self.swap_hands_btn.draw(self.screen)
-        self.clear_path_btn.draw(self.screen)
-        self.test_status_btn.draw(self.screen)
-        self.save_demo_btn.draw(self.screen)
-
-        # Draw hotbar slot buttons
-        for i, button in enumerate(self.hotbar_buttons):
-            # Highlight the currently selected slot
-            if i == self.current_hotbar_slot:
-                # Draw a highlight background for the selected slot
-                highlight_rect = pygame.Rect(
-                    button.rect.x - 3,
-                    button.rect.y - 3,
-                    button.rect.width + 6,
-                    button.rect.height + 6,
-                )
-                pygame.draw.rect(self.screen, YELLOW, highlight_rect, 3)
-            button.draw(self.screen)
-
-        # Draw hotbar label
-        hotbar_label = self.small_font.render("Hotbar Slots (1-9)", True, WHITE)
-        self.screen.blit(hotbar_label, (50, WINDOW_HEIGHT - 85))
-
-        # Draw instructions
-        instructions = [
-            "WASD: Move character (keyboard)",
-            "Left joystick: Move character (mouse)",
-            "Camera area: Look around (drag)",
-            "Buttons: Click actions",
-            "Ctrl/Z: Left click | Tab/X: Right click",
-            "Spacebar: Jump | Q: Drop item | F: Swap hands",
-            "1-9: Hotbar slots | C: Clear look path",
-            "ESC: Quit | R: Reconnect",
-        ]
-
-        for i, instruction in enumerate(instructions):
-            text = self.small_font.render(instruction, True, WHITE)
-            self.screen.blit(
-                text, (10, WINDOW_HEIGHT - 180 + i * 22)
-            )  # Adjusted spacing and position
-
-        # Draw current movement values
-        move_text = self.small_font.render(
-            f"Movement: X={self.last_movement[0]:.2f}, Z={self.last_movement[1]:.2f}",
-            True,
-            WHITE,
-        )
-        self.screen.blit(move_text, (400, 570))  # Moved down to be below camera area
-
-        # Draw keyboard status
-        keyboard_status = (
-            "WASD Active"
-            if self.keyboard_movement.is_any_key_pressed()
-            else "WASD Inactive"
-        )
-        kb_text = self.small_font.render(f"Keyboard: {keyboard_status}", True, WHITE)
-        self.screen.blit(kb_text, (400, 590))  # Moved down
-
-        # Draw keyboard shortcut status
-        shortcut_status = []
-        for key, state in self._key_states.items():
-            if state:
-                shortcut_status.append(key.upper())
-
-        shortcut_text = "Shortcuts: " + (
-            ", ".join(shortcut_status) if shortcut_status else "None"
-        )
-        shortcut_display = self.small_font.render(shortcut_text, True, WHITE)
-        self.screen.blit(shortcut_display, (400, 610))  # Moved down
-
-        # Draw current hotbar slot
-        hotbar_status = self.small_font.render(
-            f"Hotbar Slot: {self.current_hotbar_slot + 1}/9", True, WHITE
-        )
-        self.screen.blit(hotbar_status, (400, 630))  # Below shortcuts
-
-        pygame.display.flip()
 
     def run(self):
         print(f"Starting Minecraft Controller in {self.mode.upper()} mode...")
+        
+        # Initialize connection using strategy
+        self.strategy.connect()
+        
         if self.mode == "pygame":
             print("Commands will be forwarded to the Minecraft bot")
             print(
                 "Make sure the Minecraft web client server is running on localhost:8081"
             )
-            # Start WebSocket connection only in pygame mode
-            self.start_websocket_connection()
             # Use traditional pygame event loop for pygame mode
             self._run_pygame_loop()
         else:
@@ -815,7 +502,8 @@ class MinecraftController:
                         self.running = False
                     elif event.key == pygame.K_r:
                         # Reconnect
-                        self.connected = False
+                        self.state.connected = False
+                        self.connected = False  # Backward compatibility
                         self.start_websocket_connection()
 
             # Get mouse state
@@ -825,179 +513,143 @@ class MinecraftController:
             # Get keyboard state
             keys_pressed = pygame.key.get_pressed()
 
-            # Handle all the pygame input logic...
+            # Process UI inputs through UIManager
+            ui_actions = self.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed)
+            keyboard_actions = self.ui_manager.process_keyboard_shortcuts(keys_pressed)
+            
+            # Handle all actions returned by UIManager
+            self._process_ui_actions(ui_actions + keyboard_actions)
+            
+            # Handle keyboard shortcuts that need edge detection
+            self._handle_keyboard_shortcuts_edge_detection(keys_pressed)
 
-            # Draw everything
-            self.draw_ui()
+            # Draw everything using UIManager
+            self.ui_manager.draw()
             self.clock.tick(FPS)
 
-            keyboard_move_x, keyboard_move_y = self.keyboard_movement.handle_keyboard(
-                keys_pressed
-            )
-
-            # Handle keyboard shortcuts for clicking
-            ctrl_current = keys_pressed[pygame.K_LCTRL] or keys_pressed[pygame.K_RCTRL]
-            tab_current = keys_pressed[pygame.K_TAB]
-            z_current = keys_pressed[pygame.K_z]
-            x_current = keys_pressed[pygame.K_x]
-            space_current = keys_pressed[pygame.K_SPACE]
-            q_current = keys_pressed[pygame.K_q]
-            f_current = keys_pressed[pygame.K_f]
-
-            # Store current states for UI display
-            self._key_states["ctrl"] = ctrl_current
-            self._key_states["tab"] = tab_current
-            self._key_states["z"] = z_current
-            self._key_states["x"] = x_current
-            self._key_states["space"] = space_current
-            self._key_states["q"] = q_current
-            self._key_states["f"] = f_current
-
-            # Combine all left click inputs
-            left_click_input = ctrl_current or z_current
-            # Combine all right click inputs
-            right_click_input = tab_current or x_current
-
-            # Handle keyboard shortcuts using the refactored method
-            self._handle_keyboard_shortcuts(q_current, f_current, keys_pressed)
-
-            # Handle movement joystick
-            joystick_move_x, joystick_move_y = self.movement_joystick.handle_mouse(
-                mouse_pos, mouse_pressed
-            )
-
-            # Use joystick input if it's not at the center, otherwise use keyboard
-            if abs(joystick_move_x) < 0.1 and abs(joystick_move_y) < 0.1:
-                self.handle_movement(keyboard_move_x, keyboard_move_y)
-            else:
-                self.handle_movement(joystick_move_x, joystick_move_y)
-
-                # Handle camera look area
-            delta_x, delta_y = self.camera_area.handle_mouse(mouse_pos, mouse_pressed)
-
-            # Track mouse click-and-drag state changes for camera look
-            self._handle_camera_drag_state(mouse_pressed)
-
-            self.handle_camera_look(delta_x, delta_y)
-
-            # Handle action buttons
-            if self.left_click_btn.handle_mouse(mouse_pos, mouse_pressed):
-                pass  # Handle on hold/release
-            self.handle_left_click(self.left_click_btn.is_pressed or left_click_input)
-
-            if self.right_click_btn.handle_mouse(mouse_pos, mouse_pressed):
-                pass  # Handle on hold/release
-            self.handle_right_click(
-                self.right_click_btn.is_pressed or right_click_input
-            )
-
-            # Handle jump button - check both press and release
-            self.jump_btn.handle_mouse(mouse_pos, mouse_pressed)
-            self.handle_jump(self.jump_btn.is_pressed or space_current)
-
-            # Handle toggle buttons - only send command when toggled
-            if self.sneak_btn.handle_mouse(mouse_pos, mouse_pressed):
-                self.handle_sneak(self.sneak_btn.is_toggled)
-
-            if self.sprint_btn.handle_mouse(mouse_pos, mouse_pressed):
-                self.handle_sprint(self.sprint_btn.is_toggled)
-
-            if self.inventory_btn.handle_mouse(mouse_pos, mouse_pressed):
+    def _process_ui_actions(self, actions: List[Tuple[str, Any]]):
+        """Process actions returned by UIManager."""
+        for action_name, value in actions:
+            if action_name == "movement" and value:
+                self.handle_movement(value[0], value[1])
+                
+            elif action_name == "camera_look" and value:
+                self.handle_camera_look(value[0], value[1])
+                
+            elif action_name == "camera_drag_state":
+                mouse_pressed, camera_is_clicking = value
+                self._handle_camera_drag_state(mouse_pressed)
+                
+            elif action_name == "left_click":
+                self.handle_left_click(value)
+                
+            elif action_name == "right_click":
+                self.handle_right_click(value)
+                
+            elif action_name == "left_click_keyboard":
+                # Combine with button state
+                button_pressed = getattr(self.ui_manager, 'left_click_btn', None)
+                combined = value or (button_pressed and button_pressed.is_pressed)
+                self.handle_left_click(combined)
+                
+            elif action_name == "right_click_keyboard":
+                # Combine with button state
+                button_pressed = getattr(self.ui_manager, 'right_click_btn', None)
+                combined = value or (button_pressed and button_pressed.is_pressed)
+                self.handle_right_click(combined)
+                
+            elif action_name == "jump" or action_name == "jump_keyboard":
+                # Combine button and keyboard input
+                button_state = action_name == "jump" and value
+                keyboard_state = action_name == "jump_keyboard" and value
+                if hasattr(self, '_last_jump_state'):
+                    combined = button_state or keyboard_state
+                    if combined != self._last_jump_state:
+                        self.handle_jump(combined)
+                        self._last_jump_state = combined
+                else:
+                    self._last_jump_state = button_state or keyboard_state
+                    self.handle_jump(self._last_jump_state)
+                
+            elif action_name == "sneak_toggled":
+                self.handle_sneak(value)
+                
+            elif action_name == "sprint_toggled":
+                self.handle_sprint(value)
+                
+            elif action_name == "inventory_pressed":
                 self.handle_inventory()
-
-            # Handle new item management buttons
-            if self.drop_btn.handle_mouse(mouse_pos, mouse_pressed):
+                
+            elif action_name == "drop_item_pressed":
                 self.handle_drop_item()
-
-            if self.swap_hands_btn.handle_mouse(mouse_pos, mouse_pressed):
+                
+            elif action_name == "swap_hands_pressed":
                 self.handle_swap_hands()
-
-            # Handle clear path button
-            if self.clear_path_btn.handle_mouse(mouse_pos, mouse_pressed):
+                
+            elif action_name == "clear_path_pressed":
                 self.handle_clear_path()
-
-            # Handle test status button
-            if self.test_status_btn.handle_mouse(mouse_pos, mouse_pressed):
+                
+            elif action_name == "test_status_pressed":
                 self.handle_test_status()
-
-            # Handle save demonstration button (MCP mode only)
-            if self.save_demo_btn.handle_mouse(mouse_pos, mouse_pressed):
+                
+            elif action_name == "save_demo_pressed":
                 self.handle_save_demonstration()
-
-            # Handle hotbar slot buttons
-            for i, button in enumerate(self.hotbar_buttons):
-                if button.handle_mouse(mouse_pos, mouse_pressed):
-                    self.handle_hotbar_slot(i)  # i is already 0-8
-
-            # Hotbar and C key handling is now done in _handle_keyboard_shortcuts
-
-        # MCP tasks are now handled in animation_loop
-
-    def _handle_all_inputs(self, mouse_pos, mouse_pressed, keys_pressed):
-        """Handle all input processing (extracted from main loop)"""
-        # Handle keyboard shortcuts
-        ctrl_current = keys_pressed[pygame.K_LCTRL] or keys_pressed[pygame.K_RCTRL]
-        tab_current = keys_pressed[pygame.K_TAB]
-        z_current = keys_pressed[pygame.K_z]
-        x_current = keys_pressed[pygame.K_x]
-        space_current = keys_pressed[pygame.K_SPACE]
+                
+            elif action_name == "hotbar_slot_pressed":
+                self.handle_hotbar_slot(value)
+                
+            elif action_name == "keyboard_shortcuts":
+                # Handle special keyboard shortcuts that need edge detection
+                # This is processed separately in _handle_keyboard_shortcuts_edge_detection
+                pass
+    
+    def _handle_keyboard_shortcuts_edge_detection(self, keys_pressed):
+        """Handle keyboard shortcuts that require edge detection."""
+        # Handle Q key (drop item)
         q_current = keys_pressed[pygame.K_q]
-        f_current = keys_pressed[pygame.K_f]
-
-        # Store keyboard shortcut states for UI display
-        self._key_states["ctrl"] = ctrl_current
-        self._key_states["tab"] = tab_current
-        self._key_states["z"] = z_current
-        self._key_states["x"] = x_current
-        self._key_states["space"] = space_current
-        self._key_states["q"] = q_current
-        self._key_states["f"] = f_current
-
-        # Handle clicks
-        left_click_input = ctrl_current or z_current
-        right_click_input = tab_current or x_current
-
-        # Handle action buttons
-        self.left_click_btn.handle_mouse(mouse_pos, mouse_pressed)
-        self.handle_left_click(self.left_click_btn.is_pressed or left_click_input)
-
-        self.right_click_btn.handle_mouse(mouse_pos, mouse_pressed)
-        self.handle_right_click(self.right_click_btn.is_pressed or right_click_input)
-
-        self.jump_btn.handle_mouse(mouse_pos, mouse_pressed)
-        self.handle_jump(self.jump_btn.is_pressed or space_current)
-
-        # Handle toggle buttons
-        if self.sneak_btn.handle_mouse(mouse_pos, mouse_pressed):
-            self.handle_sneak(self.sneak_btn.is_toggled)
-        if self.sprint_btn.handle_mouse(mouse_pos, mouse_pressed):
-            self.handle_sprint(self.sprint_btn.is_toggled)
-
-        # Handle other buttons
-        if self.inventory_btn.handle_mouse(mouse_pos, mouse_pressed):
-            self.handle_inventory()
-        if self.drop_btn.handle_mouse(mouse_pos, mouse_pressed):
+        q_just_pressed, _ = self._detect_key_edge("q_action", q_current)
+        if q_just_pressed:
+            print("Q pressed detected! (Drop item)")
             self.handle_drop_item()
-        if self.swap_hands_btn.handle_mouse(mouse_pos, mouse_pressed):
+
+        # Handle F key (swap hands)
+        f_current = keys_pressed[pygame.K_f]
+        f_just_pressed, _ = self._detect_key_edge("f_action", f_current)
+        if f_just_pressed:
+            print("F pressed detected! (Swap hands)")
             self.handle_swap_hands()
-        if self.clear_path_btn.handle_mouse(mouse_pos, mouse_pressed):
-            self.handle_clear_path()
 
-        # Handle test status button (MCP mode only)
-        if self.test_status_btn.handle_mouse(mouse_pos, mouse_pressed):
-            self.handle_test_status()
-
-        # Handle save demonstration button (MCP mode only)
-        if self.save_demo_btn.handle_mouse(mouse_pos, mouse_pressed):
-            self.handle_save_demonstration()
-
-        # Handle hotbar buttons
-        for i, button in enumerate(self.hotbar_buttons):
-            if button.handle_mouse(mouse_pos, mouse_pressed):
+        # Handle hotbar keys (1-9)
+        hotbar_keys = [
+            pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5,
+            pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9,
+        ]
+        for i, key in enumerate(hotbar_keys):
+            key_current = keys_pressed[key]
+            key_just_pressed, _ = self._detect_key_edge(f"hotbar_{i}", key_current)
+            if key_just_pressed:
+                print(f"Hotbar key {i + 1} pressed!")
                 self.handle_hotbar_slot(i)
 
-        # Handle keyboard shortcuts for various actions
-        self._handle_keyboard_shortcuts(q_current, f_current, keys_pressed)
+        # Handle C key (clear path)
+        c_current = keys_pressed[pygame.K_c]
+        c_just_pressed, _ = self._detect_key_edge("c_action", c_current)
+        if c_just_pressed:
+            print("Look path cleared with C key!")
+            self.handle_clear_path()
+
+    def _handle_all_inputs(self, mouse_pos, mouse_pressed, keys_pressed):
+        """Legacy input handler - replaced by UIManager.process_inputs()"""
+        # This method is deprecated and replaced by UIManager
+        # Keeping for backward compatibility but delegating to UIManager
+        ui_actions = self.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed)
+        keyboard_actions = self.ui_manager.process_keyboard_shortcuts(keys_pressed)
+        
+        # Process all actions
+        self._process_ui_actions(ui_actions + keyboard_actions)
+        
+        # Handle keyboard shortcuts that need edge detection
+        self._handle_keyboard_shortcuts_edge_detection(keys_pressed)
 
     def _handle_keyboard_shortcuts(self, q_current, f_current, keys_pressed):
         """Handle keyboard shortcuts with proper press/release detection"""
@@ -1068,32 +720,18 @@ class MinecraftController:
             mouse_pressed = pygame.mouse.get_pressed()[0]
             keys_pressed = pygame.key.get_pressed()
 
-            keyboard_move_x, keyboard_move_y = self.keyboard_movement.handle_keyboard(
-                keys_pressed
-            )
+            # Process UI inputs through UIManager (same as pygame loop)
+            ui_actions = self.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed)
+            keyboard_actions = self.ui_manager.process_keyboard_shortcuts(keys_pressed)
+            
+            # Handle all actions returned by UIManager
+            self._process_ui_actions(ui_actions + keyboard_actions)
+            
+            # Handle keyboard shortcuts that need edge detection
+            self._handle_keyboard_shortcuts_edge_detection(keys_pressed)
 
-            # Handle movement
-            joystick_move_x, joystick_move_y = self.movement_joystick.handle_mouse(
-                mouse_pos, mouse_pressed
-            )
-            if abs(joystick_move_x) < 0.1 and abs(joystick_move_y) < 0.1:
-                self.handle_movement(keyboard_move_x, keyboard_move_y)
-            else:
-                self.handle_movement(joystick_move_x, joystick_move_y)
-
-            # Handle camera look
-            delta_x, delta_y = self.camera_area.handle_mouse(mouse_pos, mouse_pressed)
-
-            # Track mouse click-and-drag state changes for camera look
-            self._handle_camera_drag_state(mouse_pressed)
-
-            self.handle_camera_look(delta_x, delta_y)
-
-            # Handle all buttons and controls
-            self._handle_all_inputs(mouse_pos, mouse_pressed, keys_pressed)
-
-            # Draw everything
-            self.draw_ui()
+            # Draw everything using UIManager
+            self.ui_manager.draw()
 
             # Frame rate limiting (similar to asyncio_pygame_example.py)
             sleep_time = min(1 / FPS - (current_time - last_time - 1 / FPS), 1 / FPS)
