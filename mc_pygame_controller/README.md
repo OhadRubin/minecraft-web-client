@@ -574,6 +574,81 @@ Sent command: {'type': 'look', 'movementX': -14, 'movementY': 0}
 
 **Benefits**: No complex hybrid logic in MCP tools, no mode-specific command differences - the web client handles everything automatically based on what's actually under the cursor.
 
+## **CRITICAL LEARNING**: Misunderstood Original Timed Action Design ⚠️
+
+**What I Thought Was Broken**: The original `_handle_timed_action()` implementation appeared to send both down and up commands simultaneously on action completion, which seemed like it would break press-and-hold functionality.
+
+**What I "Fixed"**: Changed the system to send down commands immediately on press and up commands immediately on release, implementing "proper" press-and-hold behavior.
+
+**The Reality**: The original design was **intentionally** batched and working correctly:
+
+### Original Working Design (Before My "Fix")
+```python
+# Press: Set state only, no commands sent
+if pressed and not state["active"]:
+    state["start_time"] = time.time()
+    state["active"] = True
+    # NO COMMANDS SENT YET
+
+# Release: Send BOTH down and up commands together
+elif not pressed and state["active"]:
+    duration = self._calculate_duration(state["start_time"])
+    strategy.handle_timed_action(tool, duration, down_cmd, up_cmd)  # Both together
+    state["active"] = False
+```
+
+### Why This Design Actually Makes Sense
+
+1. **Duration-Based Actions**: The system measures how long you held the button, then sends that duration to the game as metadata
+2. **Atomic Command Pairs**: Many Minecraft actions work better as atomic down+up pairs with timing info
+3. **WebSocket Protocol Compatibility**: The client may be designed to handle rapid down+up sequences
+4. **MCP Tool Design**: Tools like `leftClick(duration="medium")` suggest complete actions, not press-and-hold
+
+### What My "Fix" Actually Broke
+
+**Before (Working)**:
+- Press button → no immediate action
+- Hold for 2 seconds → still no action  
+- Release → sends down+up pair with `duration="long"`
+- Result: Client receives properly timed click action
+
+**After My "Fix" (Broken)**:
+- Press button → sends down command immediately
+- Hold for 2 seconds → maintains down state
+- Release → sends up command with calculated duration
+- Result: Potentially confusing timing behavior, lost duration context
+
+### The Real Issue Was Just Command Name Mismatch
+
+The user's original problem ("left click isn't working in mcp mode") was actually just the `"leftClick"` vs `"left_click"` mapping issue in `convert_to_mcp_format()`, which I did fix correctly.
+
+**The timing system was working fine and didn't need to be "improved".**
+
+### Key Lesson: Understand Before "Fixing"
+
+I made the classic mistake of:
+1. Seeing code that looked "wrong" by my assumptions
+2. "Fixing" it without understanding the original design intent
+3. Breaking a working system while trying to improve it
+
+**The original batched timing design was intentional and functional for this system's needs.**
+
+### Summary of Changes Made and Reverted
+
+**✅ KEPT - The Actual Fix**: 
+```python
+# Fixed command name mapping in convert_to_mcp_format()
+if command_type == "left_click" or command_type == "leftClick":  # Both variants now work
+    return {"tool": "leftClick", "parameters": {"duration": params.get("duration", "medium")}}
+```
+
+**❌ REVERTED - The Unnecessary "Improvement"**:
+- Removed separate `send_down_command()` and `send_up_command()` methods  
+- Restored original `handle_timed_action()` that sends both commands together on completion
+- Restored controller logic that only calls strategy on action release, not on press
+
+**Final State**: Left click now works correctly in MCP mode due to the command name fix, while preserving the original intentional timing design.
+
 ## **SOLVED**: Angle Translation Inconsistency Bug Fixed ✅
 
 **Previous Issue**: The same calculated angles produced different camera movement in Minecraft between pygame and MCP modes, causing a 22° difference for identical mouse input.
