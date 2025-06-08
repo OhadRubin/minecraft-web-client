@@ -63,7 +63,7 @@ class PygameModeStrategy(ModeStrategy):
             # Calculate duration based on movement magnitude (same as MCP mode)
             magnitude = (x**2 + z**2) ** 0.5
             duration = int(magnitude * 2000)  # Scale to reasonable duration
-            self.controller._log_mcp_command("walk", {"duration": duration})
+            self.controller.action_handler._log_mcp_command("walk", {"duration": duration})
     
     def handle_timed_action(
         self, 
@@ -81,7 +81,7 @@ class PygameModeStrategy(ModeStrategy):
         
         # Log the action in pygame mode
         mcp_params = {"duration": duration, **kwargs}
-        self.controller._log_mcp_command(action_name, mcp_params)
+        self.controller.action_handler._log_mcp_command(action_name, mcp_params)
     
     def handle_toggle_action(self, action_name: str, state: bool, pygame_control: str = None):
         """Send pygame control command and log MCP equivalent."""
@@ -89,14 +89,14 @@ class PygameModeStrategy(ModeStrategy):
             command = {"type": "control", "control": pygame_control, "state": state}
             self.controller.send_command_sync(command)
         
-        self.controller._log_mcp_command(action_name, {"state": state})
+        self.controller.action_handler._log_mcp_command(action_name, {"state": state})
     
     def handle_simple_action(self, action_name: str, pygame_cmd: Dict[str, Any] = None, **params):
         """Send pygame command and log MCP equivalent."""
         if pygame_cmd:
             self.controller.send_command_sync(pygame_cmd)
         
-        self.controller._log_mcp_command(action_name, params)
+        self.controller.action_handler._log_mcp_command(action_name, params)
     
     def connect(self):
         """Start WebSocket connection for pygame mode."""

@@ -334,3 +334,10 @@ class ActionHandler:
         )
         if just_pressed:
             self.handle_inventory()
+
+    def _log_mcp_command(self, tool: str, parameters: Dict[str, Any]):
+        """Log MCP command if logging is enabled"""
+        # Access enable_logging through self.state, which is ControllerState
+        if self.state.enable_logging:
+            mcp_command = {"tool": tool, "parameters": parameters}
+            print(f"LOGGED: {mcp_command}")
