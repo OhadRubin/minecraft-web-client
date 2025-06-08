@@ -8,6 +8,7 @@ logic scattered throughout the controller by creating specialized mode handlers.
 from abc import ABC, abstractmethod
 from typing import Dict, Any
 import time
+import pygame
 
 
 class ModeStrategy(ABC):
@@ -47,6 +48,21 @@ class ModeStrategy(ABC):
     @abstractmethod
     def connect(self):
         """Initialize connection/setup for this mode."""
+        pass
+
+    @abstractmethod
+    def handle_camera_look(self, scaled_x: int, scaled_y: int):
+        """Handle camera look commands for this mode."""
+        pass
+
+    @abstractmethod
+    def process_continuous_state(self, mouse_pos, mouse_pressed, keys_pressed):
+        """Process continuous state updates for this mode (e.g., button holds)."""
+        pass
+
+    @abstractmethod
+    def handle_event(self, event):
+        """Handle pygame events for this mode."""
         pass
 
 
@@ -102,6 +118,43 @@ class PygameModeStrategy(ModeStrategy):
         """Start WebSocket connection for pygame mode."""
         self.controller.start_websocket_connection()
 
+    def handle_camera_look(self, scaled_x: int, scaled_y: int):
+        command = {"type": "look", "movementX": scaled_x, "movementY": scaled_y}
+        self.controller.send_command_sync(command)
+        # Log camera look for MCP compatibility if needed (optional, based on existing logging patterns)
+        if self.controller.enable_logging:
+            self.controller._log_mcp_command("look", {"movementX": scaled_x, "movementY": scaled_y})
+
+    def process_continuous_state(self, mouse_pos, mouse_pressed, keys_pressed):
+        # This ensures continuous streaming for held inputs that need constant updates
+        # Movement is already handled properly by the UI manager, so we focus on button holds
+
+        # Check for continuous button holds (mining/building)
+        # In pygame mode, we need to send continuous "button held" commands
+        left_click_state = self.controller.state.action_states.get("left_click", {})
+        if left_click_state.get("active", False):
+            # Left click is being held - send continuous mining command
+            command = {
+                "type": "documentMouseEvent",
+                "button": 0,
+                "action": "down",
+                "updateMouse": True,
+            }
+            self.controller.send_command_sync(command)
+
+        right_click_state = self.controller.state.action_states.get("right_click", {})
+        if right_click_state.get("active", False):
+            # Right click is being held - send continuous right click command
+            command = {"type": "rightDown"}
+            self.controller.send_command_sync(command)
+
+    def handle_event(self, event):
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_r:
+            # Reconnect
+            print("Attempting to reconnect in PygameMode...")
+            self.controller.state.connected = False
+            self.controller.start_websocket_connection()
+
 
 class MCPModeStrategy(ModeStrategy):
     """Strategy for MCP mode - converts actions to MCP tool calls."""
@@ -145,3 +198,20 @@ class MCPModeStrategy(ModeStrategy):
     def connect(self):
         """MCP mode doesn't need WebSocket connection."""
         print("MCP mode ready. No WebSocket connection needed.")
+
+    def handle_camera_look(self, scaled_x: int, scaled_y: int):
+        # In MCP mode, LookPathTracker handles conversion via callback.
+        # This method can be a no-op or log if necessary.
+        if self.controller.enable_logging:
+            # Optional: Log that this was called, but LookPathTracker is responsible
+            print(f"MCPModeStrategy.handle_camera_look called with {scaled_x}, {scaled_y}, but LookPathTracker is primary for MCP look.")
+        pass
+
+    def process_continuous_state(self, mouse_pos, mouse_pressed, keys_pressed):
+        # MCP mode does not typically handle continuous state streaming in this manner.
+        # Actions are usually discrete tool calls.
+        pass
+
+    def handle_event(self, event):
+        # MCP mode does not handle the 'r' key for reconnection in the same way.
+        pass

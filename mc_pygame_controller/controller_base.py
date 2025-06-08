@@ -429,11 +429,8 @@ class MinecraftController:
             # Add to path tracker
             self.look_path_tracker.add_movement(scaled_x, scaled_y)
 
-            # Only send WebSocket command in pygame mode
-            # In MCP mode, LookPathTracker will handle conversion via callback
-            if self.mode == "pygame":
-                command = {"type": "look", "movementX": scaled_x, "movementY": scaled_y}
-                self.send_command_sync(command)
+            # Delegate to strategy
+            self.strategy.handle_camera_look(scaled_x, scaled_y)
 
     def handle_left_click(self, pressed: bool):
         """Handle left click using the generic timed action handler"""
@@ -621,10 +618,9 @@ class MinecraftController:
                 if event.key == pygame.K_ESCAPE:
                     self.state.running = False
                     return False  # Signal to exit loop
-                elif event.key == pygame.K_r and self.state.mode == "pygame":
-                    # Reconnect - only in pygame mode
-                    self.state.connected = False
-                    self.start_websocket_connection()
+
+        # Delegate event handling to the current strategy
+        self.strategy.handle_event(event)
 
         # Get current input state
         mouse_pos = pygame.mouse.get_pos()
@@ -650,36 +646,8 @@ class MinecraftController:
         return True  # Continue running
 
     def _process_continuous_state(self, mouse_pos, mouse_pressed, keys_pressed):
-        """Process continuous state that needs streaming every frame (RESTORED)"""
-        # This ensures continuous streaming for held inputs that need constant updates
-        # NOTE: This complements the discrete action system with continuous state processing
-        # Movement is already handled properly by the UI manager, so we focus on button holds
-
-        # Only process continuous streaming in pygame mode
-        if self.state.mode != "pygame":
-            return
-
-        # Check for continuous button holds (mining/building)
-        # In pygame mode, we need to send continuous "button held" commands
-        left_click_state = self.state.action_states.get("left_click", {})
-        if left_click_state.get("active", False):
-            # Left click is being held - send continuous mining command
-            command = {
-                "type": "documentMouseEvent",
-                "button": 0,
-                "action": "down",
-                "updateMouse": True,
-            }
-            self.send_command_sync(command)
-
-        right_click_state = self.state.action_states.get("right_click", {})
-        if right_click_state.get("active", False):
-            # Right click is being held - send continuous right click command
-            command = {"type": "rightDown"}
-            self.send_command_sync(command)
-
-        # NOTE: Movement streaming is already handled properly by the UI manager
-        # in process_inputs() -> handle_movement() flow, so we don't duplicate it here
+        """Delegates processing of continuous state to the current strategy."""
+        self.strategy.process_continuous_state(mouse_pos, mouse_pressed, keys_pressed)
 
     def _handle_keyboard_shortcuts_edge_detection(self, keys_pressed):
         """Handle keyboard shortcuts that require edge detection (RESTORED)"""
