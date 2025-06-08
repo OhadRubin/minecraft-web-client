@@ -71,6 +71,11 @@ class MinecraftController:
         # Connect LookPathTracker for MCP mode
         if self.state.mode == "mcp":
             self.look_path_tracker.set_execution_callback(self.execute_mcp_action)
+        # Connect LookPathTracker for pygame data collection mode
+        elif self.state.mode == "pygame" and self.state.data_collection_enabled:
+            self.look_path_tracker.set_execution_callback(
+                self._execute_pygame_mcp_action
+            )
 
         # Initialize mode strategy with data collection support
         if self.state.mode == "pygame":
@@ -370,6 +375,21 @@ class MinecraftController:
             print(
                 f"🎮 MCP Command (no executor): {mcp_command['tool']}({mcp_command['parameters']})"
             )
+
+    def _execute_pygame_mcp_action(self, mcp_command):
+        """Execute MCP-formatted action in pygame data collection mode"""
+        # Forward camera drag actions to the strategy's mock+observe system
+        print(
+            f"🎭 Camera drag action: {mcp_command['tool']}({mcp_command['parameters']})"
+        )
+
+        # Convert to action format expected by the strategy
+        action = {"type": mcp_command["tool"], **mcp_command["parameters"]}
+
+        # Send to strategy's mock+observe system (same as other pygame actions)
+        self.strategy._queue_parallel_mcp_execution(
+            [action], f"Camera drag: {mcp_command['tool']}"
+        )
 
     def set_mcp_executor(self, executor):
         """Set the MCP command executor"""
