@@ -5,6 +5,7 @@ export interface MouseCommand {
     | 'leftUp'
     | 'rightDown'
     | 'rightUp'
+    | 'contextRightClick'
     | 'chat'
     | 'move'
     | 'look'
@@ -20,6 +21,15 @@ export interface MouseCommand {
     | 'getBotStatus'
     | 'annotate_3d_position'
     | 'inventory'
+  | 'gamepadConnect'
+  | 'gamepadDisconnect'
+  | 'gamepadButtonPress'
+  | 'gamepadDestroy'
+  | 'gamepadJoystickMove'
+  | 'gamepadJoystickCenter'
+  | 'gamepadJoystickPulse'
+  | 'gamepadJoystickAnimate'
+  | 'gamepadJoystickCircular'
   control?: string
   state?: boolean
   message?: string
@@ -49,4 +59,16 @@ export interface MouseCommand {
   label?: string
   color?: string
   markerId?: string
+  // gamepad fields
+  buttonIndex?: number
+  duration?: number
+  // gamepad joystick fields
+  stickIndex?: number // 0 for left stick, 1 for right stick
+  y?: number // -1 to 1 for joystick Y axis (note: x is already defined above)
+  fromX?: number // for animation from position
+  fromY?: number // for animation from position  
+  toX?: number // for animation to position
+  toY?: number // for animation to position
+  radius?: number // for circular movement
+  clockwise?: boolean // for circular movement direction
 }

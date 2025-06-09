@@ -6,6 +6,7 @@ import { MovementCommandHandler } from './handlers/movementCommands'
 import { GameCommandHandler } from './handlers/gameCommands'
 import { UICommandHandler } from './handlers/uiCommands'
 import { VisualCommandHandler } from './handlers/visualCommands'
+import { GamepadCommandHandler } from './handlers/gamepadCommands'
 
 export class TouchEvaluator {
   private mouseHandler: MouseCommandHandler
@@ -13,6 +14,7 @@ export class TouchEvaluator {
   private gameHandler: GameCommandHandler
   private uiHandler: UICommandHandler
   private visualHandler: VisualCommandHandler
+  private gamepadHandler: GamepadCommandHandler
 
   constructor(private bot: any, ws?: WebSocket) {
     this.mouseHandler = new MouseCommandHandler(bot)
@@ -20,6 +22,7 @@ export class TouchEvaluator {
     this.gameHandler = new GameCommandHandler(bot)
     this.uiHandler = new UICommandHandler(bot)
     this.visualHandler = new VisualCommandHandler(bot, ws)
+    this.gamepadHandler = new GamepadCommandHandler()
   }
 
   async setup() {
@@ -46,6 +49,9 @@ export class TouchEvaluator {
         break
       case 'rightUp':
         await this.mouseHandler.handleRightUp(cmd)
+        break
+      case 'contextRightClick':
+        await this.mouseHandler.handleContextRightClick(cmd)
         break
       case 'chat':
         await this.gameHandler.handleChat(cmd)
@@ -91,6 +97,33 @@ export class TouchEvaluator {
         break
       case 'inventory':
         await this.gameHandler.handleInventory(cmd)
+        break
+      case 'gamepadConnect':
+        await this.gamepadHandler.handleGamepadConnect(cmd)
+        break
+      case 'gamepadDisconnect':
+        await this.gamepadHandler.handleGamepadDisconnect(cmd)
+        break
+      case 'gamepadButtonPress':
+        await this.gamepadHandler.handleGamepadButtonPress(cmd)
+        break
+      case 'gamepadDestroy':
+        await this.gamepadHandler.handleGamepadDestroy(cmd)
+        break
+      case 'gamepadJoystickMove':
+        await this.gamepadHandler.handleGamepadJoystickMove(cmd)
+        break
+      case 'gamepadJoystickCenter':
+        await this.gamepadHandler.handleGamepadJoystickCenter(cmd)
+        break
+      case 'gamepadJoystickPulse':
+        await this.gamepadHandler.handleGamepadJoystickPulse(cmd)
+        break
+      case 'gamepadJoystickAnimate':
+        await this.gamepadHandler.handleGamepadJoystickAnimate(cmd)
+        break
+      case 'gamepadJoystickCircular':
+        await this.gamepadHandler.handleGamepadJoystickCircular(cmd)
         break
     }
   }

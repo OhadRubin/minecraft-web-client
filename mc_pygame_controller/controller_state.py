@@ -27,6 +27,11 @@ class ControllerState:
     current_task_description: str = ""
     session_start_time: float = 0.0
 
+    # Context state for intelligent button handling
+    inventory_open: bool = False
+    current_context: str = "world"  # "world" or "inventory"
+    last_inventory_toggle_time: float = 0.0
+
     # Hotbar state
     current_hotbar_slot: int = 0
     last_hotbar_slot: int = -1

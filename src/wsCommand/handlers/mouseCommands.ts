@@ -73,10 +73,26 @@ export class MouseCommandHandler {
 
   async handleRightDown(cmd: MouseCommand) {
     try {
-      console.log('[WsCommandClient] Executing rightDown command (UI interaction)')
+      console.log('[WsCommandClient] Executing rightDown command (context-aware)')
 
-      // UI interaction with cursor positioning
-      if (wsCursorState.usingWsInput) {
+      // Detect if inventory is open by checking bot state and DOM elements
+      const bot = (window as any).bot
+      const hasActiveWindow = bot?.currentWindow && bot.currentWindow.type !== null
+      const inventoryElement = document.querySelector('.inventory-window, .inventory, [class*="inventory"], [data-testid*="inventory"]') as HTMLElement
+      const hasModals = document.querySelector('[class*="modal"], [id*="modal"], .react-modal')
+      const gameElement = document.querySelector('canvas, #game-canvas, [class*="game"]')
+      const isGameFocused = gameElement && document.activeElement === gameElement
+      
+      // More comprehensive context detection
+      const isInventoryContext = hasActiveWindow || 
+                                 (inventoryElement && inventoryElement.style.display !== 'none') || 
+                                 hasModals || 
+                                 !isGameFocused
+      
+      console.log(`[WsCommandClient] Context detection: bot.currentWindow=${bot?.currentWindow?.type}, hasActiveWindow=${hasActiveWindow}, hasModals=${!!hasModals}, isGameFocused=${isGameFocused}, inventory/UI context = ${isInventoryContext}`)
+
+      if (isInventoryContext && wsCursorState.usingWsInput) {
+        // UI interaction with cursor positioning for inventory
         const x = (wsCursorState.x / 100) * window.innerWidth
         const y = (wsCursorState.y / 100) * window.innerHeight
         const event = new MouseEvent('mousedown', {
@@ -95,7 +111,24 @@ export class MouseCommandHandler {
           console.log('[WsCommandClient] No element found at cursor position')
         }
       } else {
-        console.log('[WsCommandClient] WebSocket input not active, ignoring rightDown')
+        // Use documentMouseEvent for game world
+        console.log('[WsCommandClient] Using documentMouseEvent for game world context')
+        const event = new MouseEvent('mousedown', {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          buttons: 2
+        })
+        Object.defineProperty(event, 'isWebSocketEvent', {
+          value: true,
+          writable: false,
+          enumerable: false
+        })
+        document.dispatchEvent(event)
+        if (this.bot?.mouse?.update) {
+          console.log('[WsCommandClient] Calling bot.mouse.update() after game world rightDown')
+          this.bot.mouse.update()
+        }
       }
     } catch (error) {
       console.error('[WsCommandClient] Error in rightDown:', error)
@@ -104,10 +137,26 @@ export class MouseCommandHandler {
 
   async handleRightUp(cmd: MouseCommand) {
     try {
-      console.log('[WsCommandClient] Executing rightUp command (UI interaction)')
+      console.log('[WsCommandClient] Executing rightUp command (context-aware)')
 
-      // UI interaction with cursor positioning
-      if (wsCursorState.usingWsInput) {
+      // Detect if inventory is open by checking bot state and DOM elements
+      const bot = (window as any).bot
+      const hasActiveWindow = bot?.currentWindow && bot.currentWindow.type !== null
+      const inventoryElement = document.querySelector('.inventory-window, .inventory, [class*="inventory"], [data-testid*="inventory"]') as HTMLElement
+      const hasModals = document.querySelector('[class*="modal"], [id*="modal"], .react-modal')
+      const gameElement = document.querySelector('canvas, #game-canvas, [class*="game"]')
+      const isGameFocused = gameElement && document.activeElement === gameElement
+      
+      // More comprehensive context detection
+      const isInventoryContext = hasActiveWindow || 
+                                 (inventoryElement && inventoryElement.style.display !== 'none') || 
+                                 hasModals || 
+                                 !isGameFocused
+      
+      console.log(`[WsCommandClient] Context detection: bot.currentWindow=${bot?.currentWindow?.type}, hasActiveWindow=${hasActiveWindow}, hasModals=${!!hasModals}, isGameFocused=${isGameFocused}, inventory/UI context = ${isInventoryContext}`)
+
+      if (isInventoryContext && wsCursorState.usingWsInput) {
+        // UI interaction with cursor positioning for inventory
         const x = (wsCursorState.x / 100) * window.innerWidth
         const y = (wsCursorState.y / 100) * window.innerHeight
         const event = new MouseEvent('mouseup', {
@@ -126,10 +175,64 @@ export class MouseCommandHandler {
           console.log('[WsCommandClient] No element found at cursor position')
         }
       } else {
-        console.log('[WsCommandClient] WebSocket input not active, ignoring rightUp')
+        // Use documentMouseEvent for game world
+        console.log('[WsCommandClient] Using documentMouseEvent for game world context')
+        const event = new MouseEvent('mouseup', {
+          bubbles: true,
+          cancelable: true,
+          button: 2,
+          buttons: 0
+        })
+        Object.defineProperty(event, 'isWebSocketEvent', {
+          value: true,
+          writable: false,
+          enumerable: false
+        })
+        document.dispatchEvent(event)
+        console.log('[WsCommandClient] Game world rightUp completed')
       }
     } catch (error) {
       console.error('[WsCommandClient] Error in rightUp:', error)
+    }
+  }
+
+  async handleContextRightClick(cmd: MouseCommand) {
+    try {
+      console.log('[WsCommandClient] Executing contextRightClick command (context-aware)')
+      
+      // Detect if inventory is open by checking for inventory elements
+      const inventoryElement = document.querySelector('.inventory-window, .inventory, [class*="inventory"]') as HTMLElement
+      const isInventoryOpen = inventoryElement && inventoryElement.style.display !== 'none'
+      
+      console.log(`[WsCommandClient] Context detection: inventory open = ${isInventoryOpen}`)
+      
+      if (isInventoryOpen) {
+        // Use UI interaction for inventory
+        console.log('[WsCommandClient] Using UI interaction for inventory context')
+        await this.handleRightDown(cmd)
+        await new Promise(resolve => setTimeout(resolve, cmd.duration || 200))
+        await this.handleRightUp(cmd)
+      } else {
+        // Use documentMouseEvent for game world
+        console.log('[WsCommandClient] Using documentMouseEvent for game world context')
+        await this.handleDocumentMouseEvent({
+          ...cmd,
+          type: 'documentMouseEvent',
+          button: 2,
+          action: 'down',
+          updateMouse: true
+        })
+        await new Promise(resolve => setTimeout(resolve, cmd.duration || 200))
+        await this.handleDocumentMouseEvent({
+          ...cmd,
+          type: 'documentMouseEvent',
+          button: 2,
+          action: 'up',
+          updateMouse: false
+        })
+      }
+    } catch (error) {
+      console.error('[WsCommandClient] Error in contextRightClick:', error)
     }
   }
 

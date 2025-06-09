@@ -396,9 +396,11 @@ const onTriggerOrReleased = (command: Command, pressed: boolean) => {
         }
         break
       case 'general.attackDestroy':
+        console.log(`[DEBUG] general.attackDestroy triggered (button 7/Right Trigger): ${pressed ? 'DOWN' : 'UP'}`)
         document.dispatchEvent(new MouseEvent(pressed ? 'mousedown' : 'mouseup', { button: 0 }))
         break
       case 'general.interactPlace':
+        console.log(`[DEBUG] general.interactPlace triggered (button 6/Left Trigger): ${pressed ? 'DOWN' : 'UP'}`)
         document.dispatchEvent(new MouseEvent(pressed ? 'mousedown' : 'mouseup', { button: 2 }))
         break
       case 'general.zoom':

@@ -30,8 +30,12 @@ class ActionHandler:
             "camera_drag_state": lambda v: (
                 self.controller._handle_camera_drag_state(v[0]) if v else None
             ),
-            "left_click": self.handle_left_click,
-            "right_click": self.handle_right_click,
+            "left_click": lambda v: self.handle_left_click(
+                v, self._detect_inventory_mode()
+            ),
+            "right_click": lambda v: self.handle_right_click(
+                v, self._detect_inventory_mode()
+            ),
             "left_click_keyboard": self._handle_left_click_keyboard,
             "right_click_keyboard": self._handle_right_click_keyboard,
             "jump": self._handle_jump_action,  # This is a helper that calls self.handle_jump
@@ -44,12 +48,60 @@ class ActionHandler:
             "clear_path_pressed": lambda _: self.handle_clear_path(),
             "test_status_pressed": lambda _: self.controller.handle_test_status(),  # Stays on controller
             "save_demo_pressed": lambda _: self.controller.handle_save_demonstration(),  # Stays on controller
+            "context_debug_pressed": lambda _: self.handle_context_debug(),  # Debug context detection
             "hotbar_slot_pressed": self.handle_hotbar_slot,
             # Data collection actions
             "start_data_collection_session": self.handle_start_data_collection_session,
             "save_data_collection_session": self.handle_save_data_collection_session,
             "cancel_data_collection_session": self.handle_cancel_data_collection_session,
             "task_description_entered": self.handle_task_description_entered,
+        }
+
+    def _detect_inventory_mode(self) -> bool:
+        """Detect if we should use inventory mode for clicks based on current context."""
+        return self.state.inventory_open or self.state.current_context == "inventory"
+
+    def _detect_current_context(self) -> str:
+        """
+        Detect the current interaction context.
+        This is a simplified version - in a full implementation, this could
+        check game state, UI elements, etc. like the WebSocket handlers do.
+        """
+        # For now, rely on manual tracking via inventory toggles
+        # In the future, this could be enhanced with more sophisticated detection
+        return self.state.current_context
+
+    def set_context(self, context: str) -> None:
+        """
+        Manually set the interaction context (useful for debugging).
+        Args:
+            context: Either "world" or "inventory"
+        """
+        if context not in ["world", "inventory"]:
+            if self.state.enable_logging:
+                print(
+                    f"Warning: Invalid context '{context}'. Must be 'world' or 'inventory'"
+                )
+            return
+
+        previous_context = self.state.current_context
+        self.state.current_context = context
+        self.state.inventory_open = context == "inventory"
+
+        if self.state.enable_logging:
+            print(f"Context manually changed from '{previous_context}' to '{context}'")
+
+    def get_context_info(self) -> Dict[str, Any]:
+        """Get current context information for debugging."""
+        return {
+            "current_context": self.state.current_context,
+            "inventory_open": self.state.inventory_open,
+            "last_inventory_toggle": self.state.last_inventory_toggle_time,
+            "time_since_toggle": (
+                time.time() - self.state.last_inventory_toggle_time
+                if self.state.last_inventory_toggle_time > 0
+                else 0
+            ),
         }
 
     # Helper methods for action dispatch dictionary
@@ -70,7 +122,8 @@ class ActionHandler:
 
         # Combine keyboard and button states (OR logic)
         combined_state = keyboard_state or button_state
-        self.handle_left_click(combined_state)
+        inventory_mode = self._detect_inventory_mode()
+        self.handle_left_click(combined_state, inventory_mode)
 
     def _handle_right_click_keyboard(self, keyboard_state: bool):
         """Handle right click keyboard input, combining with button state."""
@@ -80,7 +133,8 @@ class ActionHandler:
 
         # Combine keyboard and button states (OR logic)
         combined_state = keyboard_state or button_state
-        self.handle_right_click(combined_state)
+        inventory_mode = self._detect_inventory_mode()
+        self.handle_right_click(combined_state, inventory_mode)
 
     def _calculate_duration(self, start_time: Optional[float]) -> str:
         """Calculate duration string from start time - updated with more options"""
@@ -189,35 +243,91 @@ class ActionHandler:
                 command = {"type": "look", "movementX": scaled_x, "movementY": scaled_y}
                 self.controller.send_command_sync(command)
 
-    def handle_left_click(self, pressed: bool):
-        """Handle left click using the generic timed action handler"""
-        self._handle_timed_action(
-            "left_click",
-            pressed,
-            {
-                "type": "documentMouseEvent",
-                "button": 0,
-                "action": "down",
-                "updateMouse": True,
-            },
-            {
-                "type": "documentMouseEvent",
-                "button": 0,
-                "action": "up",
-                "updateMouse": False,
-            },
-            "leftClick",
-        )
+    def handle_left_click(self, pressed: bool, inventory_mode: bool = False):
+        """
+        Handle left click using context-sensitive commands.
 
-    def handle_right_click(self, pressed: bool):
-        """Handle right click using the generic timed action handler"""
-        self._handle_timed_action(
-            "right_click",
-            pressed,
-            {"type": "rightDown"},
-            {"type": "rightUp"},
-            "right_click",
-        )
+        Args:
+            pressed: Whether the button is currently pressed
+            inventory_mode: Whether to use inventory interaction mode
+                          - True: Uses documentMouseEvent (for UI/inventory interactions)
+                          - False: Uses standard leftDown/leftUp (for game world interactions)
+
+        The inventory_mode is automatically detected based on:
+        - Current inventory state (self.state.inventory_open)
+        - Current interaction context (self.state.current_context)
+        """
+        if not inventory_mode:
+            # Inventory mode: Use documentMouseEvent for UI interactions
+            self._handle_timed_action(
+                "left_click",
+                pressed,
+                {
+                    "type": "documentMouseEvent",
+                    "button": 0,
+                    "action": "down",
+                    "updateMouse": True,
+                },
+                {
+                    "type": "documentMouseEvent",
+                    "button": 0,
+                    "action": "up",
+                    "updateMouse": False,
+                },
+                "leftClick",
+            )
+        else:
+            # World mode: Use standard game click commands
+            self._handle_timed_action(
+                "left_click",
+                pressed,
+                {"type": "leftDown"},
+                {"type": "leftUp"},
+                "leftClick",
+            )
+
+    def handle_right_click(self, pressed: bool, inventory_mode: bool = False):
+        """
+        Handle right click using context-sensitive commands.
+
+        Args:
+            pressed: Whether the button is currently pressed
+            inventory_mode: Whether to use inventory interaction mode
+                          - True: Uses documentMouseEvent (for UI/inventory interactions)
+                          - False: Uses standard rightDown/rightUp (for game world interactions)
+
+        The inventory_mode is automatically detected based on:
+        - Current inventory state (self.state.inventory_open)
+        - Current interaction context (self.state.current_context)
+        """
+        if not inventory_mode:
+            # Inventory mode: Use documentMouseEvent for UI interactions
+            self._handle_timed_action(
+                "right_click",
+                pressed,
+                {
+                    "type": "documentMouseEvent",
+                    "button": 2,
+                    "action": "down",
+                    "updateMouse": True,
+                },
+                {
+                    "type": "documentMouseEvent",
+                    "button": 2,
+                    "action": "up",
+                    "updateMouse": False,
+                },
+                "rightClick",
+            )
+        else:
+            # World mode: Use standard game click commands
+            self._handle_timed_action(
+                "right_click",
+                pressed,
+                {"type": "rightDown"},
+                {"type": "rightUp"},
+                "rightClick",
+            )
 
     def handle_jump(self, pressed: bool):
         """Handle jump using the generic timed action handler"""
@@ -238,6 +348,18 @@ class ActionHandler:
         self._handle_toggle_action("sprint", toggled, "sprint", "sprint")
 
     def handle_inventory(self):
+        # Toggle inventory state tracking
+        self.state.inventory_open = not self.state.inventory_open
+        self.state.current_context = (
+            "inventory" if self.state.inventory_open else "world"
+        )
+        self.state.last_inventory_toggle_time = time.time()
+
+        if self.state.enable_logging:
+            print(
+                f"INVENTORY {'OPENED' if self.state.inventory_open else 'CLOSED'} - context: {self.state.current_context}"
+            )
+
         # Send inventory command (toggle)
         self.strategy.handle_simple_action(
             "toggleInventory",
@@ -340,6 +462,13 @@ class ActionHandler:
         if just_pressed:
             self.handle_inventory()
 
+        # Handle context debug (G key)
+        just_pressed, _ = self._detect_key_edge(
+            "context_debug", keys_pressed[pygame.K_g]
+        )
+        if just_pressed:
+            self.handle_context_debug()
+
     def _log_mcp_command(self, tool: str, parameters: Dict[str, Any]):
         """Log MCP command if logging is enabled"""
         # Access enable_logging through self.state, which is ControllerState
@@ -434,3 +563,19 @@ class ActionHandler:
             print("💡 Press F5 to start data collection with this task")
         else:
             print("⚠️ Empty task description entered")
+
+    def handle_context_debug(self):
+        """Handle context debug action"""
+        context_info = self.get_context_info()
+        print("🔍 Current context debug information:")
+        for key, value in context_info.items():
+            print(f"  {key}: {value}")
+
+        # Also show what mode clicks will use
+        inventory_mode = self._detect_inventory_mode()
+        print(f"  clicks_will_use_inventory_mode: {inventory_mode}")
+
+        if inventory_mode:
+            print("  ➡️ Next clicks will use documentMouseEvent (inventory mode)")
+        else:
+            print("  ➡️ Next clicks will use standard game clicks (world mode)")
