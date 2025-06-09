@@ -89,6 +89,8 @@ class ModeStrategy(ABC):
         pass
 
 # if we wanted to create a MCPPygameModeStrategy, that would be able to send commands via both the websocket and via MCP, we would need to init it the same way we do with MCP mode right?
+
+import os
 class PygameModeStrategy(ModeStrategy):
     """Strategy for pygame mode - sends WebSocket commands to Minecraft client."""
 
@@ -101,6 +103,20 @@ class PygameModeStrategy(ModeStrategy):
         super().__init__(controller)
         # Track previous movement state for continuous streaming
         self.was_moving = False
+        # Create directories for trajectory data
+        import os
+        import time
+        
+        # Create basic directory structure
+        self.trajectories_dir = "trajectories"
+        timestamp = int(time.time())
+        self.current_dir = f"trajectories/trajectory_{timestamp}"
+        self.images_dir = f"{self.current_dir}/images"
+        
+        # Make directories if they don't exist
+        os.makedirs(self.trajectories_dir, exist_ok=True)
+        os.makedirs(self.current_dir, exist_ok=True)
+        os.makedirs(self.images_dir, exist_ok=True)
 
         # This logic now clearly defines the two operational modes of this strategy
         if mcp_server and data_collection_enabled:
@@ -367,8 +383,31 @@ class PygameModeStrategy(ModeStrategy):
             tool_text = real_response.content[0].text
             base64_string = real_response.content[1].data
             print(f"📊 RUNTIME getBotStatus result:\n\n====\n{tool_text}\n====\n\n")
+            
+            # Save screenshot to images directory with timestamp
+            timestamp = int(time.time())
+            screenshot_path = f"{self.images_dir}/{timestamp}_screenshot.png"
+            with open(screenshot_path, "wb") as f:
+                f.write(base64.b64decode(base64_string))
+            
+            # Save latest screenshot for quick reference
             with open("latest_screenshot.png", "wb") as f:
                 f.write(base64.b64decode(base64_string))
+            
+            # Log the data to trace.txt in append mode
+            trace_data = f"📊 RUNTIME getBotStatus result:\n\n====\n{tool_text}\n====\n\n"
+            trace_data += f"📊 pygame_actions: {pygame_actions}\n"
+            trace_data += f"📊 mcp_actions: {mcp_actions}\n\n"
+            
+            # Check if trace.txt exists, if not print we're creating it
+            trace_file_path = f"{self.current_dir}/trace.txt"
+            file_exists = os.path.exists(trace_file_path)
+            if not file_exists:
+                print(f"Creating trace file at {trace_file_path}")
+            
+            with open(trace_file_path, "a") as f:
+                f.write(trace_data)
+                
             print(f"📊 pygame_actions: {pygame_actions}")
             print(f"📊 mcp_actions: {mcp_actions}")
 
