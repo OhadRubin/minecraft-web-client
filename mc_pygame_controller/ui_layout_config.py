@@ -6,7 +6,7 @@ This removes hardcoded "magic numbers" and makes the layout easily customizable.
 """
 
 from .constants import *
-from .ui_elements import Button, ToggleButton
+from .ui_elements import Button, ToggleButton, TextInputField
 
 
 # Core UI layout dimensions and positions
@@ -17,23 +17,20 @@ UI_LAYOUT_CONFIG = {
             "x": 150,
             "y": WINDOW_HEIGHT - 200,
             "radius": 100,
-            "label": {"text": "Movement", "offset_x": -40, "offset_y": 120}
+            "label": {"text": "Movement", "offset_x": -40, "offset_y": 120},
         },
-        "camera_area": {
-            "x": 400,
+        "camera_area": {"x": 400, "y": 50, "width": 800, "height": 500},
+        "image_viewer": {
+            "x": 1100,
             "y": 50,
-            "width": 800,
-            "height": 500
+            "width": 500,
+            "height": 400,
+            "border_color": WHITE,
+            "border_width": 2,
+            "background_color": BLACK,
+            "label": {"text": "Latest Screenshot", "offset_x": 0, "offset_y": -20},
         },
-        "look_visualization": {
-            "x": 1230,
-            "y": 50,
-            "width": 350,
-            "height": 300,
-            "label": {"text": "Look Path Visualization", "x": 1230, "y": 30}
-        }
     },
-    
     # Action buttons layout
     "action_buttons": {
         "base_config": {
@@ -42,7 +39,7 @@ UI_LAYOUT_CONFIG = {
             "start_x": 1300,
             "start_y": 600,
             "spacing": 50,
-            "row_offset": 90  # Horizontal offset for second column
+            "row_offset": 90,  # Horizontal offset for second column
         },
         "buttons": [
             # Row 1
@@ -52,15 +49,15 @@ UI_LAYOUT_CONFIG = {
                 "text": "Left Click",
                 "color": RED,
                 "row": 0,
-                "col": 0
+                "col": 0,
             },
             {
-                "name": "right_click_btn", 
+                "name": "right_click_btn",
                 "class": Button,
                 "text": "Right Click",
                 "color": BLUE,
                 "row": 0,
-                "col": 1
+                "col": 1,
             },
             # Row 2
             {
@@ -69,7 +66,7 @@ UI_LAYOUT_CONFIG = {
                 "text": "Jump",
                 "color": GREEN,
                 "row": 1,
-                "col": 0
+                "col": 0,
             },
             {
                 "name": "sneak_btn",
@@ -77,7 +74,7 @@ UI_LAYOUT_CONFIG = {
                 "text": "Sneak",
                 "color": ORANGE,
                 "row": 1,
-                "col": 1
+                "col": 1,
             },
             # Row 3
             {
@@ -86,7 +83,7 @@ UI_LAYOUT_CONFIG = {
                 "text": "Sprint",
                 "color": PURPLE,
                 "row": 2,
-                "col": 0
+                "col": 0,
             },
             {
                 "name": "inventory_btn",
@@ -94,7 +91,7 @@ UI_LAYOUT_CONFIG = {
                 "text": "Inventory",
                 "color": GRAY,
                 "row": 2,
-                "col": 1
+                "col": 1,
             },
             # Row 4 - Item management
             {
@@ -103,7 +100,7 @@ UI_LAYOUT_CONFIG = {
                 "text": "Drop Item",
                 "color": YELLOW,
                 "row": 3,
-                "col": 0
+                "col": 0,
             },
             {
                 "name": "swap_hands_btn",
@@ -111,7 +108,7 @@ UI_LAYOUT_CONFIG = {
                 "text": "Swap Hands",
                 "color": (255, 100, 255),  # Pink/magenta
                 "row": 3,
-                "col": 1
+                "col": 1,
             },
             # Row 5 - Utility buttons (full width)
             {
@@ -122,7 +119,7 @@ UI_LAYOUT_CONFIG = {
                 "row": 4,
                 "col": 0,
                 "width": 210,  # button_width * 2 + row_offset + 10
-                "span_cols": 2
+                "span_cols": 2,
             },
             # Row 6 - Debug buttons (full width)
             {
@@ -133,7 +130,7 @@ UI_LAYOUT_CONFIG = {
                 "row": 5,
                 "col": 0,
                 "width": 210,
-                "span_cols": 2
+                "span_cols": 2,
             },
             # Row 7 - Demo button (full width)
             {
@@ -144,11 +141,41 @@ UI_LAYOUT_CONFIG = {
                 "row": 6,
                 "col": 0,
                 "width": 210,
-                "span_cols": 2
-            }
-        ]
+                "span_cols": 2,
+            },
+            # Row 8-10 - Data Collection Session Controls
+            {
+                "name": "start_session_btn",
+                "class": Button,
+                "text": "Start Session (F5)",
+                "color": (0, 200, 0),  # Green
+                "row": 7,
+                "col": 0,
+                "width": 210,
+                "span_cols": 2,
+            },
+            {
+                "name": "save_session_btn",
+                "class": Button,
+                "text": "Save Session (F6)",
+                "color": (0, 0, 200),  # Blue
+                "row": 8,
+                "col": 0,
+                "width": 210,
+                "span_cols": 2,
+            },
+            {
+                "name": "cancel_session_btn",
+                "class": Button,
+                "text": "Cancel Session (F7)",
+                "color": (200, 0, 0),  # Red
+                "row": 9,
+                "col": 0,
+                "width": 210,
+                "span_cols": 2,
+            },
+        ],
     },
-    
     # Hotbar configuration
     "hotbar": {
         "button_width": 50,
@@ -157,18 +184,9 @@ UI_LAYOUT_CONFIG = {
         "y": WINDOW_HEIGHT - 60,  # Bottom of screen
         "spacing": 55,
         "count": 9,
-        "label": {
-            "text": "Hotbar Slots (1-9)",
-            "x": 50,
-            "y": WINDOW_HEIGHT - 85
-        },
-        "highlight": {
-            "color": YELLOW,
-            "border_width": 3,
-            "border_offset": 3
-        }
+        "label": {"text": "Hotbar Slots (1-9)", "x": 50, "y": WINDOW_HEIGHT - 85},
+        "highlight": {"color": YELLOW, "border_width": 3, "border_offset": 3},
     },
-    
     # Status display areas
     "status_display": {
         "title": {
@@ -176,48 +194,57 @@ UI_LAYOUT_CONFIG = {
             "x": 10,
             "y": 10,
             "color": WHITE,
-            "font_size": 36
+            "font_size": 36,
         },
         "connection_status": {
             "x": 10,
             "y": 50,
             "color_connected": GREEN,
             "color_disconnected": RED,
-            "font_size": 24
+            "font_size": 24,
         },
         "mode_status": {
             "x": 10,
             "y": 75,
             "color_mcp": BLUE,
             "color_pygame": WHITE,
-            "font_size": 24
+            "font_size": 24,
         },
-        "movement_info": {
-            "x": 400,
-            "y": 570,
-            "color": WHITE,
-            "font_size": 24
+        "data_collection_status": {
+            "x": 10,
+            "y": 100,
+            "color_active": GREEN,
+            "color_inactive": GRAY,
+            "font_size": 20,
         },
-        "keyboard_status": {
-            "x": 400,
-            "y": 590,
-            "color": WHITE,
-            "font_size": 24
+        "current_task": {
+            "x": 10,
+            "y": 125,
+            "color": YELLOW,
+            "font_size": 18,
         },
-        "shortcuts_status": {
-            "x": 400,
-            "y": 610,
-            "color": WHITE,
-            "font_size": 24
-        },
-        "hotbar_status": {
-            "x": 400,
-            "y": 630,
-            "color": WHITE,
-            "font_size": 24
-        }
+        "movement_info": {"x": 400, "y": 570, "color": WHITE, "font_size": 24},
+        "keyboard_status": {"x": 400, "y": 590, "color": WHITE, "font_size": 24},
+        "shortcuts_status": {"x": 400, "y": 610, "color": WHITE, "font_size": 24},
+        "hotbar_status": {"x": 400, "y": 630, "color": WHITE, "font_size": 24},
     },
-    
+    # Task input field for data collection
+    "task_input_field": {
+        "x": 10,
+        "y": 150,
+        "width": 350,
+        "height": 30,
+        "placeholder": "Enter task description for data collection...",
+        "font_size": 18,
+        "max_length": 150,
+        "label": {
+            "text": "Task Description:",
+            "x": 10,
+            "y": 135,
+            "color": WHITE,
+            "font_size": 16,
+        },
+    },
     # Instructions area
     "instructions": {
         "start_x": 10,
@@ -234,8 +261,8 @@ UI_LAYOUT_CONFIG = {
             "Spacebar: Jump | Q: Drop item | F: Swap hands",
             "1-9: Hotbar slots | C: Clear look path",
             "ESC: Quit | R: Reconnect",
-        ]
-    }
+        ],
+    },
 }
 
 

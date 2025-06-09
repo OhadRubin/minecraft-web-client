@@ -10,7 +10,7 @@ import time
 import pygame
 
 from .constants import *
-from .look_path import LookPathTracker, LookPathVisualizationArea
+from .look_path import LookPathTracker
 from .ui_elements import (
     Button,
     ToggleButton,
@@ -49,11 +49,10 @@ class MinecraftController:
 
         # Look path tracking
         self.look_path_tracker = LookPathTracker(
-            sensitivity=self.state.sensitivity, enable_logging=self.state.enable_logging, mode=self.state.mode
+            sensitivity=self.state.sensitivity,
+            enable_logging=self.state.enable_logging,
+            mode=self.state.mode,
         )
-        self.look_visualization = LookPathVisualizationArea(
-            1230, 50, 350, 300
-        )  # Right side visualization
 
         # Set up servers and chain
         if chain_args is not None:
@@ -88,7 +87,7 @@ class MinecraftController:
             raise ValueError(f"Unknown mode: {self.state.mode}")
 
         # Initialize UI Manager
-        self.ui_manager = UIManager(self.screen, self.state, self.look_path_tracker, self.look_visualization)
+        self.ui_manager = UIManager(self.screen, self.state, self.look_path_tracker)
 
         # Initialize Action Handler
         self.action_handler = ActionHandler(self.state, self.strategy, self)
@@ -344,7 +343,8 @@ class MinecraftController:
         if self.websocket and self.connected:
             try:
                 await self.websocket.send(json.dumps(command))
-                print(f"Sent command: {command}")
+
+                # print(f"Sent command: {command}")
             except Exception as e:
                 print(f"Error sending command: {e}")
                 self.connected = False
@@ -462,7 +462,9 @@ class MinecraftController:
     def _process_frame(self):
         """Process a single frame of input and rendering. Common logic for both game loops."""
         # Handle pygame events that need to be caught early
+        events = []
         for event in pygame.event.get():
+            events.append(event)  # Collect events for UI components
             if event.type == pygame.QUIT:
                 self.state.running = False
                 return False  # Signal to exit loop
@@ -480,18 +482,26 @@ class MinecraftController:
         mouse_pressed = pygame.mouse.get_pressed()[0]  # Left click
         keys_pressed = pygame.key.get_pressed()
 
+        # Process pygame events through UIManager for components that need event access
+        event_actions = self.ui_manager.process_events(events)
+
         # Process all inputs through UIManager (discrete actions)
         ui_actions = self.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed)
         keyboard_actions = self.ui_manager.process_keyboard_shortcuts(keys_pressed)
 
-        # Handle all actions using ActionHandler
-        self.action_handler.process_actions(ui_actions + keyboard_actions)
+        # Handle all actions using ActionHandler (including event-based actions)
+        self.action_handler.process_actions(
+            event_actions + ui_actions + keyboard_actions
+        )
 
         # Process continuous state for streaming behavior (RESTORED)
         self._process_continuous_state(mouse_pos, mouse_pressed, keys_pressed)
 
         # Handle keyboard shortcuts edge detection using ActionHandler
         self.action_handler.process_edge_detections(keys_pressed)
+
+        # Update UI elements that need periodic updates
+        self.ui_manager.update()
 
         # Draw everything using UIManager
         self.ui_manager.draw()
@@ -591,11 +601,16 @@ class MinecraftController:
 
             # Use the MCP server to call getBotStatus directly (same as MCP mode)
             result = await self.mcp_server.execute_tool("getBotStatus", {})
-            print(f"📊 Pygame startup getBotStatus result: {result}")
+            text = result.content[0].text
+            print(f"📊 Pygame startup getBotStatus result: \n====\n{text}\n====\n")
 
         except Exception as e:
+            import traceback
+
             print(f"❌ Pygame startup getBotStatus failed: {e}")
             print("💡 This may indicate MCP server connectivity issues")
+            print("Traceback:")
+            traceback.print_exc()
 
     async def animation_loop(self):
         """Main animation loop for async modes."""
@@ -610,7 +625,8 @@ class MinecraftController:
         try:
             print("🧪 Testing getBotStatus at startup...")
             result = await chain.tools_mapping["getBotStatus"]()
-            print(f"📊 Startup getBotStatus result: {result}")
+            text = result.content[0].text
+            print(f"📊 Startup getBotStatus result: \n====\n{text}\n====\n")
         except Exception as e:
             print(f"❌ Startup getBotStatus failed: {e}")
 

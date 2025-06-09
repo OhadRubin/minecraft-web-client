@@ -7,23 +7,41 @@ logic scattered throughout the controller by creating specialized mode handlers.
 
 import time
 import asyncio
+import os
+import base64
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 
 # Phase 2 imports - Leverage existing infrastructure!
 try:
-    from .async_mcp_executor import AsyncMCPExecutor, MCPActionRequest
-    from .action_sequence_tracker import ActionSequenceTracker
     from .mcp_client import Server
     from .chain import PygameMCPAsyncMessageChain
-    from .data_collection_controller import DataCollectionController
 except ImportError:
     # Handle direct script execution
-    from async_mcp_executor import AsyncMCPExecutor, MCPActionRequest
-    from action_sequence_tracker import ActionSequenceTracker
     from mcp_client import Server
     from chain import PygameMCPAsyncMessageChain
-    from data_collection_controller import DataCollectionController
+
+
+def save_screenshot_file(base64_data: str, session_id: str, tool_name: str) -> str:
+    """Save screenshot to file and return filename. MVP-minimal approach."""
+    os.makedirs(f"screenshots/{session_id}", exist_ok=True)
+    filename = f"{int(time.time())}_{tool_name}.png"
+    filepath = f"screenshots/{session_id}/{filename}"
+
+    with open(filepath, "wb") as f:
+        f.write(base64.b64decode(base64_data))
+
+    return filename
+
+
+
+def get_text_from_multimodal_output(output: Any) -> str:
+    multimodal_content = output["multimodal_content"]
+
+    text_parts = [
+        item["text"] for item in multimodal_content if item.get("type") == "text"
+    ]
+    return " ".join(text_parts)
 
 
 class ModeStrategy(ABC):
@@ -93,18 +111,11 @@ class PygameModeStrategy(ModeStrategy):
             )
             self.mcp_server = mcp_server
             self.data_collection_enabled = True
-            # ✅ No async_executor needed - we only call getBotStatus directly!
-            self.async_executor = None
-            self.sequence_tracker = ActionSequenceTracker()
-            self.data_collector = DataCollectionController()
         else:
             # --- PURE MODE INITIALIZATION ---
             print("🔧 PygameModeStrategy: Initializing in PURE WebSocket mode.")
             self.mcp_server = None
             self.data_collection_enabled = False
-            self.async_executor = None
-            self.sequence_tracker = None
-            self.data_collector = None
 
         # Phase 1: Simple queue for tracking (maintained for compatibility)
         self._mcp_action_queue = []
@@ -320,101 +331,17 @@ class PygameModeStrategy(ModeStrategy):
             # ALWAYS execute getBotStatus
             real_response = await self.mcp_server.execute_tool("getBotStatus", {})
 
-            # Show full getBotStatus result like startup does
-            print(f"📊 RUNTIME getBotStatus result: {real_response}")
-            print(f"📊 getBotStatus executed: {len(str(real_response))} chars")
+            tool_text = real_response.content[0].text
+            base64_string = real_response.content[1].data
+            print(f"📊 RUNTIME getBotStatus result:\n\n====\n{tool_text}\n====\n\n")
+            with open("latest_screenshot.png", "wb") as f:
+                f.write(base64.b64decode(base64_string))
+            print(f"📊 pygame_actions: {pygame_actions}")
+            print(f"📊 mcp_actions: {mcp_actions}")
 
-            # Save conversation ONLY if recording
-            recording = self.data_collector and self.data_collector.current_session
-            if recording:
-                print(f"💾 Recording active - saving conversation")
-                self._save_mock_conversation(
-                    pygame_actions, mcp_actions, real_response, task_context
-                )
-            else:
-                print(f"📊 Not recording - getBotStatus captured but not saved")
 
         except Exception as e:
             print(f"❌ getBotStatus failed: {e}")
-
-    def _save_mock_conversation(
-        self, pygame_actions, mcp_actions, getbotstatus_response, task_context
-    ):
-        """Save conversation with mock actions + real getBotStatus response."""
-        # Create sequence
-        sequence_id = self.sequence_tracker.start_sequence(
-            pygame_actions, task_context, expected_responses=1
-        )
-
-        # Add real getBotStatus response
-        observation_response = {
-            "tool": "getBotStatus",
-            "content": getbotstatus_response.get("content", []),
-            "timestamp": time.time(),
-            "tool_call_id": f"real_getbotstatus_{int(time.time() * 1000000) % 1000000}",
-        }
-
-        self.sequence_tracker.add_mcp_response(sequence_id, observation_response)
-
-        # Build and save conversation
-        sequence = self.sequence_tracker.active_sequences[sequence_id]
-        completed_sequence = self.sequence_tracker.complete_sequence(sequence_id)
-
-        if completed_sequence:
-            chain = self._build_mock_conversation_chain(completed_sequence, mcp_actions)
-            if chain and self.data_collector.current_session:
-                conversation_data = {
-                    "conversation_id": f"conv_{sequence_id}",
-                    "task_description": task_context,
-                    "start_time": completed_sequence.start_time,
-                    "end_time": completed_sequence.end_time,
-                    "duration": completed_sequence.end_time
-                    - completed_sequence.start_time,
-                    "messages": chain.to_dict().get("messages", []),
-                    "sequence_metadata": {
-                        "pygame_actions": len(pygame_actions),
-                        "mocked_mcp_actions": len(mcp_actions),
-                        "sequence_id": sequence_id,
-                    },
-                }
-                self.data_collector.add_completed_sequence(conversation_data)
-                print(f"💾 Conversation saved")
-
-    def _build_mock_conversation_chain(self, completed_sequence, mocked_actions):
-        """Build conversation chain with mocked actions and real observation."""
-        from .chain import PygameMCPAsyncMessageChain
-
-        # Start new chain
-        chain = PygameMCPAsyncMessageChain()
-
-        # Add user task
-        task_content = (
-            completed_sequence.task_context or "Perform spatial reasoning actions"
-        )
-        chain = chain.user(task_content)
-
-        # Add assistant response with mock tool calls (never executed)
-        from .action_converter import ActionConverter
-
-        mock_tool_calls = ActionConverter.pygame_to_openai_tools(
-            completed_sequence.pygame_actions, completed_sequence.sequence_id
-        )
-
-        chain = chain.bot(
-            content="I'll perform these spatial reasoning actions.",
-            tool_calls=mock_tool_calls,
-        )
-
-        # Add the real getBotStatus observation
-        for response in completed_sequence.mcp_responses:
-            if response.get("tool") == "getBotStatus":
-                chain = chain.tool(
-                    content=response.get("content", ""),
-                    tool_call_id=response.get("tool_call_id", ""),
-                    name="getBotStatus",
-                )
-
-        return chain
 
     def _convert_actions_to_mcp_format(self, pygame_actions):
         """Convert pygame WebSocket commands to MCP tool calls using shared ActionConverter."""
@@ -425,30 +352,32 @@ class PygameModeStrategy(ModeStrategy):
 
     def start_data_collection_session(self, task_description: str) -> str:
         """Start a new data collection session."""
-        if not self.data_collector:
-            print("⚠️ Data collection not enabled for this strategy.")
-            return None
+        pass
+        # if not self.data_collector:
+        #     print("⚠️ Data collection not enabled for this strategy.")
+        #     return None
 
-        return self.data_collector.start_collection_session(task_description)
+        # return self.data_collector.start_collection_session(task_description)
 
     def save_data_collection_session(self) -> str:
         """Save the current data collection session."""
-        if self.data_collector:
-            return self.data_collector.save_session()
-        return None
+        pass
+        # if self.data_collector:
+        #     return self.data_collector.save_session()
+        # return None
 
     def cancel_data_collection_session(self) -> None:
         """Cancel the current data collection session."""
-        if self.data_collector:
-            self.data_collector.cancel_session()
-        else:
-            print("⚠️ No data collection session to cancel.")
+        # if self.data_collector:
+        #     self.data_collector.cancel_session()
+        # else:
+        #  print("⚠️ No data collection session to cancel.")
 
-    def get_session_stats(self) -> Dict[str, Any]:
-        """Get current session statistics."""
-        if self.data_collector:
-            return self.data_collector.get_session_stats()
-        return {"status": "data_collection_disabled"}
+    # def get_session_stats(self) -> Dict[str, Any]:
+    #     """Get current session statistics."""
+    #     if self.data_collector:
+    #         return self.data_collector.get_session_stats()
+    #     return {"status": "data_collection_disabled"}
 
 
 class MCPModeStrategy(ModeStrategy):

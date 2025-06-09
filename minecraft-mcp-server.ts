@@ -310,11 +310,17 @@ server.addTool({
     execute: async () => {
         const status = await requestBotStatus();
         const readable = prettyPrintBotStatus(status);
+        const screenshotResponse = await captureScreenshot();
         return {
             content: [
                 {
                     type: "text",
                     text: readable,
+                },
+                {
+                    type: "image",
+                    data: screenshotResponse.image,
+                    mimeType: "image/png",
                 },
             ],
         };

@@ -14,8 +14,10 @@ from .ui_elements import (
     VirtualJoystick,
     KeyboardMovement,
     TouchArea,
+    TextInputField,
+    ImageViewer,
 )
-from .look_path import LookPathVisualizationArea
+
 from .controller_state import ControllerState
 from .ui_layout_config import (
     UI_LAYOUT_CONFIG,
@@ -28,12 +30,13 @@ from .ui_layout_config import (
 class UIManager:
     """Manages all UI elements, drawing, and input processing for the controller."""
 
-    def __init__(self, screen: pygame.Surface, state: ControllerState, look_path_tracker, look_visualization: LookPathVisualizationArea):
+    def __init__(
+        self, screen: pygame.Surface, state: ControllerState, look_path_tracker
+    ):
         """Initialize UI manager with screen and state references."""
         self.screen = screen
         self.state = state
         self.look_path_tracker = look_path_tracker
-        self.look_visualization = look_visualization
         self.layout_config = UI_LAYOUT_CONFIG
 
         # Initialize fonts based on configuration
@@ -79,6 +82,28 @@ class UIManager:
             camera_config["height"]
         )
 
+        # Initialize image viewer
+        image_config = self.layout_config["core_elements"]["image_viewer"]
+        self.image_viewer = ImageViewer(
+            image_config["x"],
+            image_config["y"],
+            image_config["width"],
+            image_config["height"],
+            "latest_screenshot.png",  # Path to the screenshot file
+        )
+
+        # Initialize task input field for data collection
+        task_config = self.layout_config["task_input_field"]
+        self.task_input_field = TextInputField(
+            task_config["x"],
+            task_config["y"],
+            task_config["width"],
+            task_config["height"],
+            task_config["placeholder"],
+            task_config["font_size"],
+            task_config["max_length"],
+        )
+
         # Initialize buttons from configuration
         self._init_ui_buttons_from_config()
 
@@ -92,6 +117,14 @@ class UIManager:
 
         # Create buttons from configuration
         for button_config in button_layout["buttons"]:
+            # Skip data collection buttons if data collection not enabled
+            if (
+                button_config["name"]
+                in ["start_session_btn", "save_session_btn", "cancel_session_btn"]
+                and not self.state.data_collection_enabled
+            ):
+                continue
+
             # Calculate position and size
             x, y = calculate_button_position(button_config, base_config)
             width, height = calculate_button_size(button_config, base_config)
@@ -136,6 +169,11 @@ class UIManager:
         Returns list of (action_name, value) tuples representing user intentions.
         """
         actions = []
+
+        # Handle task input field
+        if self.task_input_field.handle_mouse(mouse_pos, mouse_pressed):
+            # Text field was clicked and focused
+            pass
 
         # Handle keyboard movement
         keyboard_move_x, keyboard_move_y = self.keyboard_movement.handle_keyboard(keys_pressed)
@@ -198,6 +236,23 @@ class UIManager:
 
         if self.save_demo_btn.handle_mouse(mouse_pos, mouse_pressed):
             actions.append(("save_demo_pressed", None))
+
+        # Handle data collection buttons (only if enabled)
+        if self.state.data_collection_enabled:
+            if hasattr(
+                self, "start_session_btn"
+            ) and self.start_session_btn.handle_mouse(mouse_pos, mouse_pressed):
+                actions.append(("start_data_collection_session", None))
+
+            if hasattr(self, "save_session_btn") and self.save_session_btn.handle_mouse(
+                mouse_pos, mouse_pressed
+            ):
+                actions.append(("save_data_collection_session", None))
+
+            if hasattr(
+                self, "cancel_session_btn"
+            ) and self.cancel_session_btn.handle_mouse(mouse_pos, mouse_pressed):
+                actions.append(("cancel_data_collection_session", None))
 
         # Handle hotbar buttons
         for i, button in enumerate(self.hotbar_buttons):
@@ -292,6 +347,22 @@ class UIManager:
 
         return actions
 
+    def process_events(self, events: List[pygame.event.Event]) -> List[Tuple[str, Any]]:
+        """Process pygame events for components that need direct event access."""
+        actions = []
+
+        # Handle text input field events
+        if self.task_input_field.handle_events(events):
+            # Enter was pressed in text field
+            actions.append(("task_description_entered", self.task_input_field.value))
+
+        return actions
+
+    def update(self):
+        """Update UI elements that need periodic updates."""
+        # Update image viewer to check for new screenshots
+        self.image_viewer.update()
+
     def draw(self):
         """Draw all UI elements to the screen using configuration."""
         self.screen.fill(BLACK)
@@ -335,6 +406,46 @@ class UIManager:
         mode_color = mode_config["color_mcp"] if self.state.mode == "mcp" else mode_config["color_pygame"]
         mode = self.small_font.render(mode_text, True, mode_color)
         self.screen.blit(mode, (mode_config["x"], mode_config["y"]))
+
+        # Draw data collection status (if enabled)
+        if self.state.data_collection_enabled:
+            data_config = status_config["data_collection_status"]
+            is_active = getattr(self.state, "data_collection_session_active", False)
+            status_color = (
+                data_config["color_active"]
+                if is_active
+                else data_config["color_inactive"]
+            )
+            status_text = "Active Session" if is_active else "No Session"
+            data_status = self.small_font.render(
+                f"Data Collection: {status_text}", True, status_color
+            )
+            self.screen.blit(data_status, (data_config["x"], data_config["y"]))
+
+            # Draw current task if there's an active session
+            if is_active and hasattr(self.state, "current_task_description"):
+                task_config = status_config["current_task"]
+                current_task = (
+                    self.state.current_task_description or self.task_input_field.value
+                )
+                if current_task:
+                    task_text = f"Current Task: {current_task}"
+                    task_display = self.small_font.render(
+                        task_text, True, task_config["color"]
+                    )
+                    self.screen.blit(task_display, (task_config["x"], task_config["y"]))
+
+        # Draw task input field and label
+        task_config = self.layout_config["task_input_field"]
+        label_config = task_config["label"]
+
+        # Draw label
+        label_font = pygame.font.Font(None, label_config["font_size"])
+        label = label_font.render(label_config["text"], True, label_config["color"])
+        self.screen.blit(label, (label_config["x"], label_config["y"]))
+
+        # Draw text input field
+        self.task_input_field.draw(self.screen)
 
         # Draw movement values
         move_config = status_config["movement_info"]
@@ -381,13 +492,20 @@ class UIManager:
         # Draw camera area
         self.camera_area.draw(self.screen)
 
-        # Draw look path visualization
-        self.look_visualization.draw(self.screen, self.look_path_tracker)
+        # Draw image viewer
+        self.image_viewer.draw(self.screen)
 
-        # Draw look visualization label
-        look_config = self.layout_config["core_elements"]["look_visualization"]["label"]
-        look_label = self.small_font.render(look_config["text"], True, WHITE)
-        self.screen.blit(look_label, (look_config["x"], look_config["y"]))
+        # Draw image viewer label
+        image_config = self.layout_config["core_elements"]["image_viewer"]
+        label_config = image_config["label"]
+        image_label = self.small_font.render(label_config["text"], True, WHITE)
+        self.screen.blit(
+            image_label,
+            (
+                image_config["x"] + label_config["offset_x"],
+                image_config["y"] + label_config["offset_y"],
+            ),
+        )
 
     def _draw_action_buttons(self):
         """Draw all action buttons."""

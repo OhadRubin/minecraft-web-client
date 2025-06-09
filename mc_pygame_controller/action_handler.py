@@ -49,6 +49,7 @@ class ActionHandler:
             "start_data_collection_session": self.handle_start_data_collection_session,
             "save_data_collection_session": self.handle_save_data_collection_session,
             "cancel_data_collection_session": self.handle_cancel_data_collection_session,
+            "task_description_entered": self.handle_task_description_entered,
         }
 
     # Helper methods for action dispatch dictionary
@@ -356,12 +357,13 @@ class ActionHandler:
             print("⚠️ Data collection session already active. Save or cancel first.")
             return
 
-        # Simple task input for MVP - in GUI version this would be a dialog
-        print("📋 Enter task description (or press Enter for default):")
-        task_description = input("> ").strip()
+        # Get task description from embedded text input field
+        task_description = self.controller.ui_manager.task_input_field.value.strip()
 
         if not task_description:
             task_description = "Spatial reasoning task"
+            # Set default in the text field so user can see what was used
+            self.controller.ui_manager.task_input_field.value = task_description
 
         # Start session via strategy
         if hasattr(self.strategy, "start_data_collection_session"):
@@ -373,23 +375,6 @@ class ActionHandler:
                 print(
                     "💡 Perform your spatial reasoning actions. Press F6 to save when done."
                 )
-
-                # Initialize MCP server if needed
-                if (
-                    hasattr(self.strategy, "async_executor")
-                    and self.strategy.async_executor
-                ):
-                    # Start async execution for MCP data collection
-                    import asyncio
-
-                    try:
-                        loop = asyncio.get_event_loop()
-                        if not loop.is_running():
-                            asyncio.create_task(self.strategy.start_async_execution())
-                        else:
-                            asyncio.ensure_future(self.strategy.start_async_execution())
-                    except Exception as e:
-                        print(f"⚠️ Could not start async execution: {e}")
             else:
                 print("❌ Failed to start data collection session")
         else:
@@ -437,3 +422,15 @@ class ActionHandler:
             print("💡 Press F5 to start a new session")
         else:
             print("⚠️ Data collection not supported in current mode")
+
+    def handle_task_description_entered(self, task_description: str):
+        """Handle when user enters a task description in the text field"""
+        if not self.state.data_collection_enabled:
+            return
+
+        task_description = task_description.strip()
+        if task_description:
+            print(f"📝 Task description updated: '{task_description}'")
+            print("💡 Press F5 to start data collection with this task")
+        else:
+            print("⚠️ Empty task description entered")

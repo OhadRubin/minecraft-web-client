@@ -1,5 +1,20 @@
 {
     "configurations": [
+        {
+            "name": "Python Debugger: Remote Attach",
+            "type": "debugpy",
+            "request": "attach",
+            "connect": {
+                "host": "localhost",
+                "port": 5678
+            },
+            "pathMappings": [
+                {
+                    "localRoot": "${workspaceFolder}",
+                    "remoteRoot": "."
+                }
+            ]
+        },
         // recommended as much faster
         {
             // to launch "C:\Program Files\Google\Chrome Beta\Application\chrome.exe" --remote-debugging-port=9222

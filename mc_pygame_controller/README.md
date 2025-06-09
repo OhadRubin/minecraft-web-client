@@ -1,6 +1,54 @@
 # mc_pygame_controller
 A sophisticated pygame-based controller for Minecraft Web Client that provides both manual control and AI-driven autonomous gameplay through MCP (Model Context Protocol) integration. **Core component of the 3D Visual SKETCHPAD research project for collecting spatial reasoning training data.**
 
+```mermaid
+graph TD
+    subgraph "Human"
+        A[Human Demonstrator]
+    end
+
+    subgraph "Pygame Controller (This Project)"
+        style Controller fill:#e6f3ff,stroke:#333,stroke-width:2px
+        Controller(mc_pygame_controller)
+        UI[UI Manager]
+        Handler[Action Handler]
+        Strategy[PygameModeStrategy]
+        Converter[Action Converter]
+        Tracker[Action Sequence Tracker]
+        DataCollector[Action Collection Controller]
+
+        UI --> Handler
+        Handler --> Strategy
+        Strategy --> Converter
+        Strategy --> Tracker
+        Tracker --> DataCollector
+    end
+
+    subgraph "External Services"
+        Relay[WebSocket Relay server.js]
+        WebClient[Minecraft Web Client Browser, Three.js]
+        MCPServer[MCP Server minecraft-mcp-server.ts]
+    end
+
+    subgraph "Final Output"
+        style TrainingData fill:#d4edda,stroke:#155724,stroke-width:2px
+        TrainingData[Training Data JSON Trajectories]
+    end
+
+    A -- "Pygame Events (WASD, Mouse Clicks)" --> Controller
+
+    Controller -- "[1A] Real-time WebSocket Commands (move, click, etc.)" --> Relay
+    Relay -- "Forwards gameplay commands" --> WebClient
+    WebClient -- "Visual Feedback on Screen" --> A
+
+    Controller -.->|"[1B] REAL 'getBotStatus' call ONLY for observation"| MCPServer
+    MCPServer -- "Executes 'getBotStatus'" --> WebClient
+    WebClient -- "Returns Game State + Screenshot" --> MCPServer
+    MCPServer -.->|"Forwards 'getBotStatus' response"| Controller
+
+    DataCollector -- "[2] Saves complete Conversation JSON" --> TrainingData
+
+```
 ## Research Context
 
 This controller is part of a larger research pipeline aimed at **collecting 50K Visual SKETCHPAD trajectories for 3D spatial reasoning** and demonstrating transfer to web agents and other domains. The system captures human demonstrations of 3D spatial reasoning tasks in Minecraft, converting them into training data for AI agents.

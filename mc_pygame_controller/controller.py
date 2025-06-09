@@ -1,3 +1,32 @@
+def init_debugpy(wait=True, port=5678):
+    """
+    Initialize debugpy for remote debugging.
+
+    Args:
+        wait: If True, wait for the debugger to attach before proceeding
+        port: The port to listen for debugger connections
+    """
+    try:
+        import debugpy
+
+        # Allow remote connections
+        debugpy.listen(("0.0.0.0", port))
+        print(f"🐞 Debugpy listening on port {port}")
+
+        if wait:
+            print(f"⏳ Waiting for debugger to attach on port {port}...")
+            debugpy.wait_for_client()
+            print("✅ Debugger attached!")
+
+    except ImportError:
+        print(
+            "⚠️ debugpy not installed. Run 'pip install debugpy' for remote debugging."
+        )
+    except Exception as e:
+        print(f"❌ Error initializing debugpy: {e}")
+
+
+# init_debugpy()
 from .controller_base import MinecraftController
 
 from dataclasses import dataclass, field, replace
