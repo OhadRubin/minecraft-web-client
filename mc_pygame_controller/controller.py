@@ -25,8 +25,9 @@ def init_debugpy(wait=True, port=5678):
     except Exception as e:
         print(f"❌ Error initializing debugpy: {e}")
 
-
-# init_debugpy()
+import os
+if "DEBUG" in os.environ:
+    init_debugpy()
 from .controller_base import MinecraftController
 
 from dataclasses import dataclass, field, replace

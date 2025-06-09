@@ -248,5 +248,62 @@ def validate_conversion_consistency():
     print("✅ Conversion consistency validated!")
 
 
+def convert_to_mcp_format(command_type, params):
+    """Convert pygame commands to MCP format"""
+    # Simple mapping for clicks, movement, etc.
+    if command_type == "left_click" or command_type == "leftClick":
+        return {
+            "tool": "leftClick",
+            "parameters": {"duration": params.get("duration", "medium")},
+        }
+    elif command_type == "right_click" or command_type == "rightClick":
+        return {
+            "tool": "rightClick",
+            "parameters": {"duration": params.get("duration", "medium")},
+        }
+    elif command_type == "walk":
+        return {
+            "tool": "walk",
+            "parameters": {"duration": params.get("duration", 1000)},
+        }
+    elif command_type == "setHotbarSlot":
+        return {
+            "tool": "setHotbarSlot",
+            "parameters": {"slot": params.get("slot", 0)},
+        }
+    elif command_type == "jump":
+        return {
+            "tool": "jump",
+            "parameters": {"duration": params.get("duration", "short")},
+        }
+    elif command_type == "sneak":
+        return {
+            "tool": "sneak",
+            "parameters": {"state": params.get("state", True)},
+        }
+    elif command_type == "sprint":
+        return {
+            "tool": "sprint",
+            "parameters": {"state": params.get("state", True)},
+        }
+    elif command_type == "toggleInventory":
+        return {
+            "tool": "toggleInventory",
+            "parameters": {},
+        }
+    elif command_type == "dropItem":
+        return {
+            "tool": "dropItem",
+            "parameters": {"amount": params.get("amount", 1)},
+        }
+    elif command_type == "swapHands":
+        return {
+            "tool": "swapHands",
+            "parameters": {},
+        }
+    # Add more mappings as needed
+    return None
+
+
 if __name__ == "__main__":
     validate_conversion_consistency()

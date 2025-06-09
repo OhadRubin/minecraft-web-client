@@ -22,6 +22,7 @@ from .mode_strategy import ModeStrategy, PygameModeStrategy, MCPModeStrategy
 from .ui_manager import UIManager
 from .controller_state import ControllerState
 from .action_handler import ActionHandler
+from .action_converter import convert_to_mcp_format
 import argparse
 
 
@@ -343,7 +344,6 @@ class MinecraftController:
         if self.websocket and self.connected:
             try:
                 await self.websocket.send(json.dumps(command))
-
                 # print(f"Sent command: {command}")
             except Exception as e:
                 print(f"Error sending command: {e}")
@@ -395,67 +395,12 @@ class MinecraftController:
         """Set the MCP command executor"""
         self.mcp_executor = executor
 
-    def convert_to_mcp_format(self, command_type, params):
-        """Convert pygame commands to MCP format"""
-        # Simple mapping for clicks, movement, etc.
-        if command_type == "left_click" or command_type == "leftClick":
-            return {
-                "tool": "leftClick",
-                "parameters": {"duration": params.get("duration", "medium")},
-            }
-        elif command_type == "right_click" or command_type == "rightClick":
-            return {
-                "tool": "rightClick",
-                "parameters": {"duration": params.get("duration", "medium")},
-            }
-        elif command_type == "walk":
-            return {
-                "tool": "walk",
-                "parameters": {"duration": params.get("duration", 1000)},
-            }
-        elif command_type == "setHotbarSlot":
-            return {
-                "tool": "setHotbarSlot",
-                "parameters": {"slot": params.get("slot", 0)},
-            }
-        elif command_type == "jump":
-            return {
-                "tool": "jump",
-                "parameters": {"duration": params.get("duration", "short")},
-            }
-        elif command_type == "sneak":
-            return {
-                "tool": "sneak",
-                "parameters": {"state": params.get("state", True)},
-            }
-        elif command_type == "sprint":
-            return {
-                "tool": "sprint",
-                "parameters": {"state": params.get("state", True)},
-            }
-        elif command_type == "toggleInventory":
-            return {
-                "tool": "toggleInventory",
-                "parameters": {},
-            }
-        elif command_type == "dropItem":
-            return {
-                "tool": "dropItem",
-                "parameters": {"amount": params.get("amount", 1)},
-            }
-        elif command_type == "swapHands":
-            return {
-                "tool": "swapHands",
-                "parameters": {},
-            }
-        # Add more mappings as needed
-        return None
 
     def handle_other_commands(self, command_type, **params):
         """Execute non-look MCP commands directly"""
         if self.mode == "mcp" and self.mcp_executor:
             # Simple mapping for clicks, movement, etc.
-            mcp_command = self.convert_to_mcp_format(command_type, params)
+            mcp_command = convert_to_mcp_format(command_type, params)
             if mcp_command:
                 self.execute_mcp_action(mcp_command)
 

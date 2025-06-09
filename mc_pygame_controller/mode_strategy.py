@@ -131,10 +131,12 @@ class PygameModeStrategy(ModeStrategy):
         command = {"type": "move", "x": x, "z": z}
         self.controller.send_command_sync(command)
 
+        # DISABLED: Old movement logging - now using continuous state tracking pattern
+        # The process_continuous_state method handles movement summarization
         # Phase 2 enhancement: Queue parallel MCP execution for data collection
-        if self.data_collection_enabled and self.mcp_server:
-            task_context = getattr(self.controller, "current_task_description", "")
-            self._queue_parallel_mcp_execution([command], task_context)
+        # if self.data_collection_enabled and self.mcp_server:
+        #     task_context = getattr(self.controller, "current_task_description", "")
+        #     self._queue_parallel_mcp_execution([command], task_context)
 
         # Log movement in pygame mode if logging enabled
         if self.controller.enable_logging and (abs(x) > 0.1 or abs(z) > 0.1):
@@ -227,15 +229,46 @@ class PygameModeStrategy(ModeStrategy):
         # Check if currently moving
         is_moving = abs(movement_x) > 0.1 or abs(movement_z) > 0.1
 
-        # Send movement commands or stop commands based on state changes
+        # Movement tracking pattern (similar to camera tracking)
+        if is_moving and not self.was_moving:
+            # Start movement tracking
+            print("🚶‍♂️ Movement started - beginning walk tracking")
+            self.movement_start_time = time.time()
+            self.movement_accumulator = {"total_distance": 0.0, "last_pos": (movement_x, movement_z)}
+            
         if is_moving:
-            # Send continuous movement while keys are held
+            # Send continuous movement while keys are held (immediate game response)
             command = {"type": "move", "x": movement_x, "z": movement_z}
             self.controller.send_command_sync(command)
+            
+            # Accumulate movement distance for summarization
+            if hasattr(self, 'movement_accumulator'):
+                last_x, last_z = self.movement_accumulator["last_pos"]
+                distance = ((movement_x - last_x)**2 + (movement_z - last_z)**2)**0.5
+                self.movement_accumulator["total_distance"] += distance
+                self.movement_accumulator["last_pos"] = (movement_x, movement_z)
+
         elif self.was_moving and not is_moving:
-            # Send stop command when transitioning from moving to not moving
+            # Movement ended - summarize and log for data collection
+            print("🚶‍♂️ Movement ended - summarizing walk action")
+            
+            # Send stop command
             command = {"type": "move", "x": 0.0, "z": 0.0}
             self.controller.send_command_sync(command)
+            
+            # Log summarized movement for data collection
+            if self.data_collection_enabled and hasattr(self, 'movement_accumulator'):
+                duration = int((time.time() - self.movement_start_time) * 1000)  # ms
+                distance = self.movement_accumulator["total_distance"]
+                
+                # Create summarized movement command for data collection only
+                # Use the last movement direction for the summary
+                last_x, last_z = self.movement_accumulator["last_pos"]
+                summarized_command = {"type": "move", "x": last_x, "z": last_z, "duration": duration, "distance": distance}
+                print(f"📊 Walk summary: direction=({last_x:.2f}, {last_z:.2f}), distance={distance:.2f}, duration={duration}ms")
+                
+                task_context = getattr(self.controller, "current_task_description", "")
+                self._queue_parallel_mcp_execution([summarized_command], task_context)
 
         # Update movement state for next frame
         self.was_moving = is_moving

@@ -1,5 +1,5 @@
 from .constants import *
-from .look_path import LookPathTracker, LookPathVisualizationArea
+from .look_path import LookPathTracker
 from .ui_elements import (
     Button,
     ToggleButton,
@@ -11,7 +11,6 @@ from .controller_base import MinecraftController
 
 __all__ = [
     "LookPathTracker",
-    "LookPathVisualizationArea",
     "Button",
     "ToggleButton",
     "VirtualJoystick",
