@@ -5,6 +5,64 @@ import { miscUiState } from './globalState'
 import html2canvas from 'html2canvas'
 import * as THREE from 'three'
 
+/**
+ * Resizes a base64 image to specified width while maintaining aspect ratio
+ * @param {string} base64String - The base64 encoded image string (with or without data URL prefix)
+ * @param {number} targetWidth - Target width in pixels (default: 1080)
+ * @returns {Promise<string>} - Promise that resolves to the resized image as base64 string
+ */
+function resizeImageBase64(base64String: string, targetWidth: number = 1080): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // Create an image element
+    const img = new Image();
+
+    // Handle image load
+    img.onload = function () {
+      // Calculate the new dimensions maintaining aspect ratio
+      const originalWidth = img.width;
+      const originalHeight = img.height;
+      const aspectRatio = originalHeight / originalWidth;
+
+      const newWidth = targetWidth;
+      const newHeight = Math.round(newWidth * aspectRatio);
+
+      // Create a canvas element
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+
+      if (!ctx) {
+        reject(new Error('Failed to get canvas context'));
+        return;
+      }
+
+      // Set canvas dimensions
+      canvas.width = newWidth;
+      canvas.height = newHeight;
+
+      // Draw the resized image on canvas
+      ctx.drawImage(img, 0, 0, newWidth, newHeight);
+
+      // Convert canvas to base64
+      const resizedBase64 = canvas.toDataURL('image/jpeg', 0.9);
+
+      resolve(resizedBase64);
+    };
+
+    // Handle image load error
+    img.onerror = function () {
+      reject(new Error('Failed to load image from base64 string'));
+    };
+
+    // Set the image source
+    // Handle both cases: with and without data URL prefix
+    if (base64String.startsWith('data:')) {
+      img.src = base64String;
+    } else {
+      img.src = `data:image/jpeg;base64,${base64String}`;
+    }
+  });
+}
+
 function createTextSprite(text: string): THREE.Sprite {
   const canvas = document.createElement('canvas')
   const context = canvas.getContext('2d')!
@@ -539,7 +597,7 @@ class TouchEvaluator {
                     useCORS: true,
                     allowTaint: true,
                     backgroundColor: null,
-                    scale: 0.8, // Downscale for smaller file size
+                    scale: 1, // Full size capture
                     logging: false,
                     ignoreElements: (element) => {
                       // Optionally ignore certain elements (e.g., debug overlays)
@@ -553,42 +611,24 @@ class TouchEvaluator {
                   const dataUrl = canvas.toDataURL('image/png', 0.8)
                   const base64Data = dataUrl.split(',')[1]
 
-                  console.log(`[WsCommandClient] Full page screenshot captured successfully: ${canvas.width}x${canvas.height}`)
-                  resolve(base64Data)
+                  // Resize the image to 1080 pixels width while maintaining aspect ratio
+                  console.log(`[WsCommandClient] Original screenshot size: ${canvas.width}x${canvas.height}`)
+
+                  try {
+                    // Resize the captured image to 1080 width
+                    const resizedDataUrl = await resizeImageBase64(dataUrl, 1080)
+                    const resizedBase64Data = resizedDataUrl.split(',')[1]
+
+                    console.log(`[WsCommandClient] Screenshot resized to 1080px width successfully`)
+                    resolve(resizedBase64Data)
+                  } catch (resizeError) {
+                    console.warn('[WsCommandClient] Failed to resize screenshot, using original:', resizeError)
+                    console.log(`[WsCommandClient] Full page screenshot captured successfully: ${canvas.width}x${canvas.height}`)
+                    resolve(base64Data)
+                  }
                 } catch (error) {
-                  console.warn('[WsCommandClient] html2canvas failed, falling back to canvas-only capture:', error)
-
-                  // Fallback to canvas-only capture if html2canvas fails
-                  const gameCanvas = document.getElementById('viewer-canvas') as HTMLCanvasElement
-                  if (!gameCanvas) {
-                    throw new Error('Game canvas not found and html2canvas failed')
-                  }
-
-                  // Create a downscaled version of just the game canvas
-                  const originalWidth = gameCanvas.width
-                  const originalHeight = gameCanvas.height
-                  const scaleFactor = 0.8
-                  const scaledWidth = Math.floor(originalWidth * scaleFactor)
-                  const scaledHeight = Math.floor(originalHeight * scaleFactor)
-
-                  const fallbackCanvas = document.createElement('canvas')
-                  fallbackCanvas.width = scaledWidth
-                  fallbackCanvas.height = scaledHeight
-                  const ctx = fallbackCanvas.getContext('2d')
-
-                  if (!ctx) {
-                    throw new Error('Failed to get 2D context for fallback canvas')
-                  }
-
-                  ctx.imageSmoothingEnabled = true
-                  ctx.imageSmoothingQuality = 'high'
-                  ctx.drawImage(gameCanvas, 0, 0, originalWidth, originalHeight, 0, 0, scaledWidth, scaledHeight)
-
-                  const dataUrl = fallbackCanvas.toDataURL('image/png', 0.8)
-                  const base64Data = dataUrl.split(',')[1]
-
-                  console.log(`[WsCommandClient] Fallback screenshot captured: ${scaledWidth}x${scaledHeight} (UI elements not included)`)
-                  resolve(base64Data)
+                  console.error('[WsCommandClient] html2canvas failed:', error)
+                  reject(error)
                 }
               }, 100)
             } catch (error) {
