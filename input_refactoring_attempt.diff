@@ -1,0 +1,525 @@
+diff --git a/mc_pygame_controller/action_handler.py b/mc_pygame_controller/action_handler.py
+index a957345d..6b0e12ba 100644
+--- a/mc_pygame_controller/action_handler.py
++++ b/mc_pygame_controller/action_handler.py
+@@ -30,12 +30,8 @@ class ActionHandler:
+             "camera_drag_state": lambda v: (
+                 self.controller._handle_camera_drag_state(v[0]) if v else None
+             ),
+-            "left_click": lambda v: self.handle_left_click(
+-                v, self._detect_inventory_mode()
+-            ),
+-            "right_click": lambda v: self.handle_right_click(
+-                v, self._detect_inventory_mode()
+-            ),
++            "left_click": lambda v: self.handle_left_click(v),
++            "right_click": lambda v: self.handle_right_click(v),
+             "left_click_keyboard": self._handle_left_click_keyboard,
+             "right_click_keyboard": self._handle_right_click_keyboard,
+             "jump": self._handle_jump_action,  # This is a helper that calls self.handle_jump
+@@ -58,8 +54,8 @@ class ActionHandler:
+         }
+ 
+     def _detect_inventory_mode(self) -> bool:
+-        """Detect if we should use inventory mode for clicks based on current context."""
+-        return self.state.inventory_open or self.state.current_context == "inventory"
++        """DEPRECATED: Context detection now handled automatically by web client."""
++        return False  # Always return False since web client handles context
+ 
+     def _detect_current_context(self) -> str:
+         """
+@@ -122,8 +118,7 @@ class ActionHandler:
+ 
+         # Combine keyboard and button states (OR logic)
+         combined_state = keyboard_state or button_state
+-        inventory_mode = self._detect_inventory_mode()
+-        self.handle_left_click(combined_state, inventory_mode)
++        self.handle_left_click(combined_state)
+ 
+     def _handle_right_click_keyboard(self, keyboard_state: bool):
+         """Handle right click keyboard input, combining with button state."""
+@@ -133,8 +128,7 @@ class ActionHandler:
+ 
+         # Combine keyboard and button states (OR logic)
+         combined_state = keyboard_state or button_state
+-        inventory_mode = self._detect_inventory_mode()
+-        self.handle_right_click(combined_state, inventory_mode)
++        self.handle_right_click(combined_state)
+ 
+     def _calculate_duration(self, start_time: Optional[float]) -> str:
+         """Calculate duration string from start time - updated with more options"""
+@@ -245,89 +239,37 @@ class ActionHandler:
+ 
+     def handle_left_click(self, pressed: bool, inventory_mode: bool = False):
+         """
+-        Handle left click using context-sensitive commands.
++        Handle left click using simplified commands (context detection automatic in web client).
+ 
+         Args:
+             pressed: Whether the button is currently pressed
+-            inventory_mode: Whether to use inventory interaction mode
+-                          - True: Uses documentMouseEvent (for UI/inventory interactions)
+-                          - False: Uses standard leftDown/leftUp (for game world interactions)
+-
+-        The inventory_mode is automatically detected based on:
+-        - Current inventory state (self.state.inventory_open)
+-        - Current interaction context (self.state.current_context)
++            inventory_mode: Ignored - web client handles context detection automatically
+         """
+-        if not inventory_mode:
+-            # Inventory mode: Use documentMouseEvent for UI interactions
+-            self._handle_timed_action(
+-                "left_click",
+-                pressed,
+-                {
+-                    "type": "documentMouseEvent",
+-                    "button": 0,
+-                    "action": "down",
+-                    "updateMouse": True,
+-                },
+-                {
+-                    "type": "documentMouseEvent",
+-                    "button": 0,
+-                    "action": "up",
+-                    "updateMouse": False,
+-                },
+-                "leftClick",
+-            )
+-        else:
+-            # World mode: Use standard game click commands
+-            self._handle_timed_action(
+-                "left_click",
+-                pressed,
+-                {"type": "leftDown"},
+-                {"type": "leftUp"},
+-                "leftClick",
+-            )
++        # Simple approach: always use leftDown/leftUp, let web client handle context and cursor positioning
++        self._handle_timed_action(
++            "left_click",
++            pressed,
++            {"type": "leftDown"},
++            {"type": "leftUp"},
++            "leftClick",
++        )
+ 
+     def handle_right_click(self, pressed: bool, inventory_mode: bool = False):
+         """
+-        Handle right click using context-sensitive commands.
++        Handle right click using simplified commands (context detection automatic in web client).
+ 
+         Args:
+             pressed: Whether the button is currently pressed
+-            inventory_mode: Whether to use inventory interaction mode
+-                          - True: Uses documentMouseEvent (for UI/inventory interactions)
+-                          - False: Uses standard rightDown/rightUp (for game world interactions)
+-
+-        The inventory_mode is automatically detected based on:
+-        - Current inventory state (self.state.inventory_open)
+-        - Current interaction context (self.state.current_context)
++            inventory_mode: Ignored - web client handles context detection automatically
+         """
+-        if not inventory_mode:
+-            # Inventory mode: Use documentMouseEvent for UI interactions
+-            self._handle_timed_action(
+-                "right_click",
+-                pressed,
+-                {
+-                    "type": "documentMouseEvent",
+-                    "button": 2,
+-                    "action": "down",
+-                    "updateMouse": True,
+-                },
+-                {
+-                    "type": "documentMouseEvent",
+-                    "button": 2,
+-                    "action": "up",
+-                    "updateMouse": False,
+-                },
+-                "rightClick",
+-            )
+-        else:
+-            # World mode: Use standard game click commands
+-            self._handle_timed_action(
+-                "right_click",
+-                pressed,
+-                {"type": "rightDown"},
+-                {"type": "rightUp"},
+-                "rightClick",
+-            )
++        # Simple approach: always use rightDown/rightUp, let web client handle context and cursor positioning
++        self._handle_timed_action(
++            "right_click",
++            pressed,
++            {"type": "rightDown"},
++            {"type": "rightUp"},
++            "rightClick",
++        )
+ 
+     def handle_jump(self, pressed: bool):
+         """Handle jump using the generic timed action handler"""
+@@ -571,11 +513,5 @@ class ActionHandler:
+         for key, value in context_info.items():
+             print(f"  {key}: {value}")
+ 
+-        # Also show what mode clicks will use
+-        inventory_mode = self._detect_inventory_mode()
+-        print(f"  clicks_will_use_inventory_mode: {inventory_mode}")
+-
+-        if inventory_mode:
+-            print("  ➡️ Next clicks will use documentMouseEvent (inventory mode)")
+-        else:
+-            print("  ➡️ Next clicks will use standard game clicks (world mode)")
++        print("  ➡️ Context detection now automatic in web client")
++        print("  ➡️ All clicks use leftDown/rightDown - web client handles context")
+diff --git a/src/react/GamepadUiCursor.tsx b/src/react/GamepadUiCursor.tsx
+index 84c9b63a..d671677c 100644
+--- a/src/react/GamepadUiCursor.tsx
++++ b/src/react/GamepadUiCursor.tsx
+@@ -19,10 +19,11 @@ export const moveGamepadCursorByPx = (value: number, isX: boolean) => {
+ 
+ export default () => {
+   const hasModals = useSnapshot(activeModalStack).length > 0
+-  const { x, y } = useSnapshot(gamepadUiCursorState)
++  const { x, y, display } = useSnapshot(gamepadUiCursorState)
+   const { usingGamepadInput, gameLoaded } = useSnapshot(miscUiState)
+ 
+-  const doDisplay = usingGamepadInput && (hasModals || !gameLoaded)
++  // Show cursor when: using gamepad input AND (has modals OR game not loaded OR explicitly forced to display)
++  const doDisplay = usingGamepadInput && (hasModals || !gameLoaded || display)
+ 
+   useEffect(() => {
+     document.body.style.cursor = gameLoaded && !hasModals && usingGamepadInput ? 'none' : 'auto'
+diff --git a/src/reactUi.tsx b/src/reactUi.tsx
+index 21bc7d94..6c717c4c 100644
+--- a/src/reactUi.tsx
++++ b/src/reactUi.tsx
+@@ -249,7 +249,7 @@ const App = () => {
+           <RobustPortal to={document.body}>
+             <div className='overlay-top-scaled'>
+               <GamepadUiCursor />
+-              <WsCursor />
++              {/* <WsCursor /> */}
+             </div>
+             <div />
+             <DebugEdges />
+diff --git a/src/wsCommand/TouchEvaluator.ts b/src/wsCommand/TouchEvaluator.ts
+index 40bb3336..e5a4e594 100644
+--- a/src/wsCommand/TouchEvaluator.ts
++++ b/src/wsCommand/TouchEvaluator.ts
+@@ -1,6 +1,6 @@
+ import { MouseCommand } from './types'
+-import { wsCursorState } from '../react/WsCursor'
+ import { miscUiState } from '../globalState'
++import { gamepadUiCursorState } from '../react/GamepadUiCursor'
+ import { MouseCommandHandler } from './handlers/mouseCommands'
+ import { MovementCommandHandler } from './handlers/movementCommands'
+ import { GameCommandHandler } from './handlers/gameCommands'
+@@ -30,9 +30,10 @@ export class TouchEvaluator {
+   }
+ 
+   async execute(cmd: MouseCommand) {
+-    // Enable WebSocket input mode when any command is received
+-    wsCursorState.usingWsInput = true
++    // Enable gamepad input mode when any command is received
+     miscUiState.usingGamepadInput = true
++    // Force GamepadUiCursor to display (override normal gamepad logic)
++    gamepadUiCursorState.display = true
+ 
+     switch (cmd.type) {
+       case 'control':
+diff --git a/src/wsCommand/handlers/mouseCommands.ts b/src/wsCommand/handlers/mouseCommands.ts
+index 3c26bd53..d39a53a3 100644
+--- a/src/wsCommand/handlers/mouseCommands.ts
++++ b/src/wsCommand/handlers/mouseCommands.ts
+@@ -1,5 +1,5 @@
+ import { MouseCommand } from '../types'
+-import { moveWsCursorBy, emitWsMousemove, wsCursorState } from '../../react/WsCursor'
++import { gamepadUiCursorState } from '../../react/GamepadUiCursor'
+ 
+ export class MouseCommandHandler {
+   // Track active button states to prevent duplicate actions
+@@ -11,30 +11,22 @@ export class MouseCommandHandler {
+ 
+   async handleLeftDown(cmd: MouseCommand) {
+     try {
+-      console.log('[WsCommandClient] Executing leftDown command (UI interaction)')
+-
+-      // UI interaction with cursor positioning
+-      if (wsCursorState.usingWsInput) {
+-        const x = (wsCursorState.x / 100) * window.innerWidth
+-        const y = (wsCursorState.y / 100) * window.innerHeight
+-        const event = new MouseEvent('mousedown', {
+-          bubbles: true,
+-          cancelable: true,
+-          clientX: x,
+-          clientY: y,
+-          button: 0,
+-          buttons: 1
+-        })
+-        const elementAtCursor = document.elementFromPoint(x, y)
+-        if (elementAtCursor) {
+-          elementAtCursor.dispatchEvent(event)
+-          console.log(`[WsCommandClient] Left clicked at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+-        } else {
+-          console.log('[WsCommandClient] No element found at cursor position')
+-        }
+-      } else {
+-        console.log('[WsCommandClient] WebSocket input not active, ignoring leftDown')
++      console.log('[WsCommandClient] Simple leftDown (using GamepadUiCursor system)')
++
++      // Auto-position cursor at center for UI interactions (if not explicitly positioned)
++      if (cmd.x === undefined && cmd.y === undefined) {
++        gamepadUiCursorState.x = 50
++        gamepadUiCursorState.y = 50
++        console.log('[WsCommandClient] Auto-positioned cursor at center (50%, 50%)')
++      } else if (cmd.x !== undefined && cmd.y !== undefined) {
++        gamepadUiCursorState.x = Math.min(100, Math.max(0, cmd.x))
++        gamepadUiCursorState.y = Math.min(100, Math.max(0, cmd.y))
++        console.log(`[WsCommandClient] Positioned cursor at ${gamepadUiCursorState.x}%, ${gamepadUiCursorState.y}%`)
+       }
++
++      // Use simple document event like before - this works!
++      document.dispatchEvent(new MouseEvent('mousedown', { button: 0 }))
++      console.log('[WsCommandClient] Simple leftDown completed')
+     } catch (error) {
+       console.error('[WsCommandClient] Error in leftDown:', error)
+     }
+@@ -42,30 +34,11 @@ export class MouseCommandHandler {
+ 
+   async handleLeftUp(cmd: MouseCommand) {
+     try {
+-      console.log('[WsCommandClient] Executing leftUp command (UI interaction)')
++      console.log('[WsCommandClient] Simple leftUp (using GamepadUiCursor system)')
+ 
+-      // UI interaction with cursor positioning
+-      if (wsCursorState.usingWsInput) {
+-        const x = (wsCursorState.x / 100) * window.innerWidth
+-        const y = (wsCursorState.y / 100) * window.innerHeight
+-        const event = new MouseEvent('mouseup', {
+-          bubbles: true,
+-          cancelable: true,
+-          clientX: x,
+-          clientY: y,
+-          button: 0,
+-          buttons: 0
+-        })
+-        const elementAtCursor = document.elementFromPoint(x, y)
+-        if (elementAtCursor) {
+-          elementAtCursor.dispatchEvent(event)
+-          console.log(`[WsCommandClient] Left click released at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+-        } else {
+-          console.log('[WsCommandClient] No element found at cursor position')
+-        }
+-      } else {
+-        console.log('[WsCommandClient] WebSocket input not active, ignoring leftUp')
+-      }
++      // Use simple document event like before - this works!
++      document.dispatchEvent(new MouseEvent('mouseup', { button: 0 }))
++      console.log('[WsCommandClient] Simple leftUp completed')
+     } catch (error) {
+       console.error('[WsCommandClient] Error in leftUp:', error)
+     }
+@@ -73,63 +46,22 @@ export class MouseCommandHandler {
+ 
+   async handleRightDown(cmd: MouseCommand) {
+     try {
+-      console.log('[WsCommandClient] Executing rightDown command (context-aware)')
+-
+-      // Detect if inventory is open by checking bot state and DOM elements
+-      const bot = (window as any).bot
+-      const hasActiveWindow = bot?.currentWindow && bot.currentWindow.type !== null
+-      const inventoryElement = document.querySelector('.inventory-window, .inventory, [class*="inventory"], [data-testid*="inventory"]') as HTMLElement
+-      const hasModals = document.querySelector('[class*="modal"], [id*="modal"], .react-modal')
+-      const gameElement = document.querySelector('canvas, #game-canvas, [class*="game"]')
+-      const isGameFocused = gameElement && document.activeElement === gameElement
+-      
+-      // More comprehensive context detection
+-      const isInventoryContext = hasActiveWindow || 
+-                                 (inventoryElement && inventoryElement.style.display !== 'none') || 
+-                                 hasModals || 
+-                                 !isGameFocused
+-      
+-      console.log(`[WsCommandClient] Context detection: bot.currentWindow=${bot?.currentWindow?.type}, hasActiveWindow=${hasActiveWindow}, hasModals=${!!hasModals}, isGameFocused=${isGameFocused}, inventory/UI context = ${isInventoryContext}`)
+-
+-      if (isInventoryContext && wsCursorState.usingWsInput) {
+-        // UI interaction with cursor positioning for inventory
+-        const x = (wsCursorState.x / 100) * window.innerWidth
+-        const y = (wsCursorState.y / 100) * window.innerHeight
+-        const event = new MouseEvent('mousedown', {
+-          bubbles: true,
+-          cancelable: true,
+-          clientX: x,
+-          clientY: y,
+-          button: 2,
+-          buttons: 2
+-        })
+-        const elementAtCursor = document.elementFromPoint(x, y)
+-        if (elementAtCursor) {
+-          elementAtCursor.dispatchEvent(event)
+-          console.log(`[WsCommandClient] Right clicked at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+-        } else {
+-          console.log('[WsCommandClient] No element found at cursor position')
+-        }
+-      } else {
+-        // Use documentMouseEvent for game world
+-        console.log('[WsCommandClient] Using documentMouseEvent for game world context')
+-        const event = new MouseEvent('mousedown', {
+-          bubbles: true,
+-          cancelable: true,
+-          button: 2,
+-          buttons: 2
+-        })
+-        Object.defineProperty(event, 'isWebSocketEvent', {
+-          value: true,
+-          writable: false,
+-          enumerable: false
+-        })
+-        document.dispatchEvent(event)
+-        if (this.bot?.mouse?.update) {
+-          console.log('[WsCommandClient] Calling bot.mouse.update() after game world rightDown')
+-          this.bot.mouse.update()
+-        }
++      console.log('[WsCommandClient] Simple rightDown (using GamepadUiCursor system)')
++
++      // Auto-position cursor at center for UI interactions (if not explicitly positioned)
++      if (cmd.x === undefined && cmd.y === undefined) {
++        gamepadUiCursorState.x = 50
++        gamepadUiCursorState.y = 50
++        console.log('[WsCommandClient] Auto-positioned cursor at center (50%, 50%)')
++      } else if (cmd.x !== undefined && cmd.y !== undefined) {
++        gamepadUiCursorState.x = Math.min(100, Math.max(0, cmd.x))
++        gamepadUiCursorState.y = Math.min(100, Math.max(0, cmd.y))
++        console.log(`[WsCommandClient] Positioned cursor at ${gamepadUiCursorState.x}%, ${gamepadUiCursorState.y}%`)
+       }
++
++      // Use simple document event like before - this works!
++      document.dispatchEvent(new MouseEvent('mousedown', { button: 2 }))
++      console.log('[WsCommandClient] Simple rightDown completed')
+     } catch (error) {
+       console.error('[WsCommandClient] Error in rightDown:', error)
+     }
+@@ -137,65 +69,19 @@ export class MouseCommandHandler {
+ 
+   async handleRightUp(cmd: MouseCommand) {
+     try {
+-      console.log('[WsCommandClient] Executing rightUp command (context-aware)')
+-
+-      // Detect if inventory is open by checking bot state and DOM elements
+-      const bot = (window as any).bot
+-      const hasActiveWindow = bot?.currentWindow && bot.currentWindow.type !== null
+-      const inventoryElement = document.querySelector('.inventory-window, .inventory, [class*="inventory"], [data-testid*="inventory"]') as HTMLElement
+-      const hasModals = document.querySelector('[class*="modal"], [id*="modal"], .react-modal')
+-      const gameElement = document.querySelector('canvas, #game-canvas, [class*="game"]')
+-      const isGameFocused = gameElement && document.activeElement === gameElement
++      console.log('[WsCommandClient] Simple rightUp (using GamepadUiCursor system)')
+       
+-      // More comprehensive context detection
+-      const isInventoryContext = hasActiveWindow || 
+-                                 (inventoryElement && inventoryElement.style.display !== 'none') || 
+-                                 hasModals || 
+-                                 !isGameFocused
+-      
+-      console.log(`[WsCommandClient] Context detection: bot.currentWindow=${bot?.currentWindow?.type}, hasActiveWindow=${hasActiveWindow}, hasModals=${!!hasModals}, isGameFocused=${isGameFocused}, inventory/UI context = ${isInventoryContext}`)
++      // No cursor positioning needed for up events - cursor should already be positioned from down event
+ 
+-      if (isInventoryContext && wsCursorState.usingWsInput) {
+-        // UI interaction with cursor positioning for inventory
+-        const x = (wsCursorState.x / 100) * window.innerWidth
+-        const y = (wsCursorState.y / 100) * window.innerHeight
+-        const event = new MouseEvent('mouseup', {
+-          bubbles: true,
+-          cancelable: true,
+-          clientX: x,
+-          clientY: y,
+-          button: 2,
+-          buttons: 0
+-        })
+-        const elementAtCursor = document.elementFromPoint(x, y)
+-        if (elementAtCursor) {
+-          elementAtCursor.dispatchEvent(event)
+-          console.log(`[WsCommandClient] Right click released at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+-        } else {
+-          console.log('[WsCommandClient] No element found at cursor position')
+-        }
+-      } else {
+-        // Use documentMouseEvent for game world
+-        console.log('[WsCommandClient] Using documentMouseEvent for game world context')
+-        const event = new MouseEvent('mouseup', {
+-          bubbles: true,
+-          cancelable: true,
+-          button: 2,
+-          buttons: 0
+-        })
+-        Object.defineProperty(event, 'isWebSocketEvent', {
+-          value: true,
+-          writable: false,
+-          enumerable: false
+-        })
+-        document.dispatchEvent(event)
+-        console.log('[WsCommandClient] Game world rightUp completed')
+-      }
++      // Use simple document event like before - this works!
++      document.dispatchEvent(new MouseEvent('mouseup', { button: 2 }))
++      console.log('[WsCommandClient] Simple rightUp completed')
+     } catch (error) {
+       console.error('[WsCommandClient] Error in rightUp:', error)
+     }
+   }
+ 
++
+   async handleContextRightClick(cmd: MouseCommand) {
+     try {
+       console.log('[WsCommandClient] Executing contextRightClick command (context-aware)')
+@@ -314,23 +200,37 @@ export class MouseCommandHandler {
+ 
+   async handleCursor(cmd: MouseCommand) {
+     try {
+-      console.log(`[WsCommandClient] Moving cursor to position: ${cmd.x}, ${cmd.z}`)
++      console.log(`[WsCommandClient] Moving GamepadUiCursor to position: ${cmd.x}, ${cmd.z}`)
+       if (cmd.x !== undefined && cmd.z !== undefined) {
+-        // Set absolute cursor position (0-100 percentage)
+-        wsCursorState.x = Math.min(100, Math.max(0, cmd.x))
+-        wsCursorState.y = Math.min(100, Math.max(0, cmd.z))
+-        emitWsMousemove()
+-        console.log(`[WsCommandClient] Successfully moved cursor to ${wsCursorState.x}%, ${wsCursorState.y}%`)
++        // Set absolute cursor position (0-100 percentage) using GamepadUiCursor
++        gamepadUiCursorState.x = Math.min(100, Math.max(0, cmd.x))
++        gamepadUiCursorState.y = Math.min(100, Math.max(0, cmd.z))
++        this.emitMousemove()
++        console.log(`[WsCommandClient] GamepadUiCursor positioned at ${gamepadUiCursorState.x}%, ${gamepadUiCursorState.y}%`)
+       } else if (cmd.movementX !== undefined || cmd.movementY !== undefined) {
+-        // Relative cursor movement
+-        const dx = (cmd.movementX || 0) * 0.5 // Adjust sensitivity as needed
+-        const dy = (cmd.movementY || 0) * 0.5
+-        moveWsCursorBy(dx, dy)
+-        emitWsMousemove()
+-        console.log(`[WsCommandClient] Moved cursor by ${dx}, ${dy}`)
++        // Relative cursor movement using GamepadUiCursor
++        const dx = (cmd.movementX || 0) * 0.1 // Adjust sensitivity for percentage-based movement
++        const dy = (cmd.movementY || 0) * 0.1
++        gamepadUiCursorState.x = Math.min(100, Math.max(0, gamepadUiCursorState.x + dx))
++        gamepadUiCursorState.y = Math.min(100, Math.max(0, gamepadUiCursorState.y + dy))
++        this.emitMousemove()
++        console.log(`[WsCommandClient] GamepadUiCursor moved to ${gamepadUiCursorState.x}%, ${gamepadUiCursorState.y}%`)
+       }
+     } catch (error) {
+-      console.error('[WsCommandClient] Error moving cursor:', error)
++      console.error('[WsCommandClient] Error moving GamepadUiCursor:', error)
+     }
+   }
++
++  private emitMousemove() {
++    const { x, y } = gamepadUiCursorState
++    const xAbs = x / 100 * window.innerWidth
++    const yAbs = y / 100 * window.innerHeight
++    const element = document.elementFromPoint(xAbs, yAbs) as HTMLElement | null
++    if (!element) return
++    element.dispatchEvent(new MouseEvent('mousemove', {
++      clientX: xAbs,
++      clientY: yAbs
++    }))
++  }
++
+ }
+\ No newline at end of file
