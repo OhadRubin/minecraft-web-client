@@ -96,7 +96,47 @@ export const gamepadSimulator = {
     }, duration);
   },
 
-  // Set axis value (for future use)
+  // Start button press (no auto-release)
+  startButtonPress: function (buttonIndex: number) {
+    if (buttonIndex < 0 || buttonIndex >= gamepadSimulator.fakeController.buttons.length) {
+      console.warn(`[GamepadSimulator] Invalid button index: ${buttonIndex}`);
+      return;
+    }
+
+    // Auto-setup: ensure gamepad is created and connected
+    if (!gamepadSimulator.getGamepads) {
+      gamepadSimulator.create();
+    }
+    if (!gamepadSimulator.fakeController.connected) {
+      gamepadSimulator.connect();
+    }
+
+    // Set button pressed
+    gamepadSimulator.fakeController.buttons[buttonIndex].pressed = true;
+    gamepadSimulator.fakeController.buttons[buttonIndex].touched = true;
+    gamepadSimulator.fakeController.buttons[buttonIndex].value = 1;
+    gamepadSimulator.fakeController.timestamp = Math.floor(Date.now() / 1000);
+
+    console.log(`[GamepadSimulator] Button ${buttonIndex} pressed (no auto-release)`);
+  },
+
+  // End button press
+  endButtonPress: function (buttonIndex: number) {
+    if (buttonIndex < 0 || buttonIndex >= gamepadSimulator.fakeController.buttons.length) {
+      console.warn(`[GamepadSimulator] Invalid button index: ${buttonIndex}`);
+      return;
+    }
+
+    // Release button
+    gamepadSimulator.fakeController.buttons[buttonIndex].pressed = false;
+    gamepadSimulator.fakeController.buttons[buttonIndex].touched = false;
+    gamepadSimulator.fakeController.buttons[buttonIndex].value = 0;
+    gamepadSimulator.fakeController.timestamp = Math.floor(Date.now() / 1000);
+
+    console.log(`[GamepadSimulator] Button ${buttonIndex} released`);
+  },
+
+  // Set axis value
   setAxis: function (axisIndex: number, value: number) {
     if (axisIndex < 0 || axisIndex >= gamepadSimulator.fakeController.axes.length) {
       console.warn(`[GamepadSimulator] Invalid axis index: ${axisIndex}`);

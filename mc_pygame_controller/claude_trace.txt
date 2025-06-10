@@ -1,0 +1,241 @@
+You: aquire some wood
+Bot (thinking): I'll help you acquire some wood! Let me first check the current situation and then look around for trees.
+Tool call: ChatCompletionMessageToolCall(id='toolu_vrtx_01T7BMQccDe4Rh8xbSbsnsKd', function=Function(arguments='', name='getBotStatus'), type='function', index=0)
+Tool response contained multimodal content
+Position: (31, 65, -24) facing South (180°, 0°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Vines (cannot dig - too far away)
+Bot (thinking): Perfect! I'm in a Sparse Jungle biome and I can see jungle trees around me. I can see some jungle wood logs in the trees nearby. Let me look around to find the best tree to start harvesting wood from.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_018nbgBaMdiLK3z9fzK9UkMe', function=Function(arguments='{"xAngle": -45, "yAngle": 0}', name='lookAngle'), type='function', index=0)
+Tool response contained multimodal content
+Looked -45° yaw and 0° pitch
+
+Current Status:
+Position: (31, 65, -24) facing West (245.55°, 0°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Short Grass (can dig)
+Bot (thinking): Great! I can see a jungle wood log right in front of me - that brown block in the center of my view. Let me get closer to it and start mining it with my bare hands.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01C2kPQSNZHovph5HdgYTwfe', function=Function(arguments='{"duration": 1500}', name='walk'), type='function', index=0)
+Tool response contained multimodal content
+Walked forward for 1500ms
+
+Current Status:
+Position: (35, 68, -22) facing West (245.55°, 0°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: pointing at a block that is too far away
+Bot (thinking): I can see I'm now higher up and can see jungle trees in the distance, but I need to find wood logs that are closer. Let me look around to find some accessible jungle wood logs.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_012LSJsCPqmZhyZ9vsLPn2Xu', function=Function(arguments='{"xAngle": 90, "yAngle": 0}', name='lookAngle'), type='function', index=0)
+Tool response contained multimodal content
+Looked 90° yaw and 0° pitch
+
+Current Status:
+Position: (35, 68, -22) facing East (117.3°, 0°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: pointing at a block that is too far away
+Bot (thinking): Perfect! I can see a jungle wood log right in the center of the screen - that brown vertical trunk. It looks like it might still be a bit far, so let me walk forward to get closer to it.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01VvkCrKeat7pMVTaxcejkx8', function=Function(arguments='{"duration": 2000}', name='walk'), type='function', index=0)
+Tool response contained multimodal content
+Walked forward for 2000ms
+
+Current Status:
+Position: (28, 63, -18) facing East (117.3°, 0°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: pointing at a block that is too far away
+Bot (thinking): Good! I can see I'm now closer to the jungle trees. I can see jungle wood logs in the distance, and I notice there's a brown jungle wood log visible in the tree to my right. Let me look around to find the closest accessible jungle wood log.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01QNQtnauc8xhLa26qzE12im', function=Function(arguments='{"xAngle": 45, "yAngle": 0}', name='lookAngle'), type='function', index=0)
+Tool response contained multimodal content
+Looked 45° yaw and 0° pitch
+
+Current Status:
+Position: (28, 63, -18) facing East (51.75°, 0°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Vines (can dig)
+Bot (thinking): Excellent! I can see jungle wood logs (the brown blocks) in the trees ahead of me. I can see at least one jungle wood log that appears to be within reach. Let me walk forward to get closer to these jungle trees.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01PevB5nN9drtw2Jfo79WfSt', function=Function(arguments='{"duration": 2000}', name='walk'), type='function', index=0)
+Tool response contained multimodal content
+Walked forward for 2000ms
+
+Current Status:
+Position: (22, 64, -23) facing East (51.75°, 0°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Vines (cannot dig)
+Bot (thinking): Great! I'm now much closer to the jungle trees. I can see the jungle wood logs are still a bit distant. Let me look around to find the closest accessible jungle wood log that I can mine.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01MMt5QotKh4ibYBDnXnQ8Qy', function=Function(arguments='{"xAngle": -90, "yAngle": 0}', name='lookAngle'), type='function', index=0)
+Tool response contained multimodal content
+Looked -90° yaw and 0° pitch
+
+Current Status:
+Position: (22, 64, -23) facing South (180°, 0°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: pointing at a block that is too far away
+Bot (thinking): I can see jungle trees with vines on the left side. Let me look left to see if I can find a closer jungle wood log.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01Sf6hFJ8kWiCUpf4jNfGhGP', function=Function(arguments='{"xAngle": -45, "yAngle": 0}', name='lookAngle'), type='function', index=0)
+Tool response contained multimodal content
+Looked -45° yaw and 0° pitch
+
+Current Status:
+Position: (22, 64, -23) facing West (245.55°, 0°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Sugar Cane (cannot dig)
+Bot (thinking): Perfect! I can see jungle wood logs in the trees right in front of me - those brown blocks that are part of the jungle tree trunks. I can see at least one jungle wood log that looks like it might be within reach. Let me walk forward to get closer to that jungle tree.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01YUe26vDFpg9qZGNBaa8EVs', function=Function(arguments='{"duration": 1500}', name='walk'), type='function', index=0)
+Tool response contained multimodal content
+Walked forward for 1500ms
+
+Current Status:
+Position: (26, 63, -20) facing West (245.55°, 0°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Vines (can dig)
+Bot (thinking): Great! I'm now much closer to the jungle trees. I can see I'm looking at vines that I can dig. Let me look around to find a jungle wood log that's within reach. I can see brown jungle wood logs in the trees nearby.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_013dJRjzetBov5SHtaMvsLYv', function=Function(arguments='{"xAngle": 45, "yAngle": -10}', name='lookAngle'), type='function', index=0)
+Tool response contained multimodal content
+Looked 45° yaw and -10° pitch
+
+Current Status:
+Position: (26, 63, -20) facing South (180°, -13.8°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Sand (cannot dig)
+Bot (thinking): I can see the jungle trees with vines on the left side. Let me look back towards the jungle trees to find a jungle wood log that I can reach and mine.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01HDBqxRZkvo6nFpBkkVWvwo', function=Function(arguments='{"xAngle": -45, "yAngle": 10}', name='lookAngle'), type='function', index=0)
+Tool response contained multimodal content
+Looked -45° yaw and 10° pitch
+
+Current Status:
+Position: (26, 63, -20) facing West (245.55°, 0°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Vines (can dig)
+Bot (thinking): Perfect! I can see jungle wood logs (the brown blocks) in the jungle trees right in front of me. I can see vines that I can dig, and behind them there should be jungle wood logs. Let me walk a bit closer to get to the jungle wood.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01MGed2cuG1BbtiVQ88ykhTZ', function=Function(arguments='{"duration": 1000}', name='walk'), type='function', index=0)
+Tool response contained multimodal content
+Walked forward for 1000ms
+
+Current Status:
+Position: (29, 63, -19) facing West (245.55°, 0°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Vines (can dig)
+Bot (thinking): Excellent! I can see I'm very close to the jungle trees now. I can see vines that I can dig, and I should be able to find jungle wood logs behind or near these vines. Let me first clear some of these vines to access the jungle wood logs behind them.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01D1tGjYAoBE938HwRqi4G5M', function=Function(arguments='{"duration": "short"}', name='leftClick'), type='function', index=0)
+Tool response contained multimodal content
+Left clicked in world for short (500ms)
+
+Current Status:
+Position: (29, 63, -19) facing West (245.55°, 0°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Vines (can dig)
+Bot (thinking): Good! I can see I've cleared some vines and now I can see behind them. I can see jungle wood logs (brown blocks) in the tree structure. Let me look around to find a jungle wood log that's within reach to mine.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01GBPM44tbDCFAEEfiMb2qQA', function=Function(arguments='{"xAngle": 0, "yAngle": -15}', name='lookAngle'), type='function', index=0)
+Tool response contained multimodal content
+Looked 0° yaw and -15° pitch
+
+Current Status:
+Position: (29, 63, -19) facing West (245.55°, -21.6°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Vines (can dig)
+Bot (thinking): I can see I'm still looking at vines. Let me continue clearing these vines to get to the jungle wood logs behind them.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01UZBzaxnrcazne5MR8GGq8J', function=Function(arguments='{"duration": "short"}', name='leftClick'), type='function', index=0)
+Tool response contained multimodal content
+Left clicked in world for short (500ms)
+
+Current Status:
+Position: (29, 63, -19) facing West (245.55°, -21.6°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Sand (can dig)
+Bot (thinking): Good! I cleared the vines and now I can see sand that I can dig. I can see jungle wood logs (brown blocks) in the background. Let me look up and around to find a jungle wood log that's within reach to mine.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_0125jDcB9exwbxhPaQHMHZzb', function=Function(arguments='{"xAngle": 0, "yAngle": 30}', name='lookAngle'), type='function', index=0)
+Tool response contained multimodal content
+Looked 0° yaw and 30° pitch
+
+Current Status:
+Position: (29, 63, -19) facing West (245.55°, 21.15°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Vines (can dig)
+Bot (thinking): Perfect! I can see more vines above me that I can dig. Let me clear these vines first to reveal the jungle wood logs behind them.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01FTE384WDm6rquujks1oFGU', function=Function(arguments='{"duration": "short"}', name='leftClick'), type='function', index=0)
+Tool response contained multimodal content
+Left clicked in world for short (500ms)
+
+Current Status:
+Position: (29, 63, -19) facing West (245.55°, 21.15°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: pointing at a block that is too far away
+Bot (thinking): I can see that I cleared some vines but now I'm pointing at a block that's too far away. I can see jungle wood logs in the background on the left side (the brown blocks in the jungle trees). Let me look towards those jungle wood logs and try to get closer to them.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_017KfG2U2LQEmn2idny45Lec', function=Function(arguments='{"xAngle": -45, "yAngle": -20}', name='lookAngle'), type='function', index=0)
+Tool response contained multimodal content
+Looked -45° yaw and -20° pitch
+
+Current Status:
+Position: (29, 63, -19) facing West (311.1°, -6.45°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Short Grass (can dig)
+Bot (thinking): Excellent! Perfect! I can now see jungle wood logs (the brown blocks) right in front of me! I can see at least one jungle wood log that appears to be within reach. Let me try to mine it by left-clicking and holding.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01UyjLjW3kireqrDbREk6efi', function=Function(arguments='{"xAngle": 15, "yAngle": 0}', name='lookAngle'), type='function', index=0)
+Tool response contained multimodal content
+Looked 15° yaw and 0° pitch
+
+Current Status:
+Position: (29, 63, -19) facing West (289.5°, -6.45°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 0
+Hotbar: Empty
+Looking at: Gravel (can dig)
+Bot (thinking): I can see gravel that I can dig, and I can see jungle wood logs (brown blocks) in the background. Let me look back towards the jungle wood logs and try to target one that's within reach.
+Tool call: ChatCompletionMessageToolCall(id='toolu_bdrk_01JwCuFiVA8LpgxFvkNcfFG4', function=Function(arguments='{"xAngle": -15, "yAngle": 5}', name='lookAngle'), type='function', index=0)
+Tool response contained multimodal content

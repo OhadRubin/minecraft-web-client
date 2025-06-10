@@ -102,8 +102,11 @@ export class TouchEvaluator {
       case 'gamepadDisconnect':
         await this.gamepadHandler.handleGamepadDisconnect(cmd)
         break
-      case 'gamepadButtonPress':
-        await this.gamepadHandler.handleGamepadButtonPress(cmd)
+      case 'gamepadButtonPressDown':
+        await this.gamepadHandler.handleGamepadButtonPressDown(cmd)
+        break
+      case 'gamepadButtonPressUp':
+        await this.gamepadHandler.handleGamepadButtonPressUp(cmd)
         break
       case 'gamepadDestroy':
         await this.gamepadHandler.handleGamepadDestroy(cmd)
