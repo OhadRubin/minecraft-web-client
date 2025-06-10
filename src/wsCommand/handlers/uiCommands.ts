@@ -5,7 +5,6 @@ export class UICommandHandler {
 
   async handleClickElement(cmd: MouseCommand) {
     try {
-      console.log(`[WsCommandClient] Executing clickElement: ${cmd.selector} - ${cmd.action}`)
       const element = document.querySelector(cmd.selector!) as HTMLElement
       if (!element) {
         console.error(`[WsCommandClient] Element not found: ${cmd.selector}`)
@@ -24,7 +23,6 @@ export class UICommandHandler {
           buttons: 1
         })
         element.dispatchEvent(event)
-        console.log(`[WsCommandClient] Dispatched pointerdown on ${cmd.selector}`)
       } else if (cmd.action === 'up') {
         // Trigger pointerup event (touch interface uses pointer events)
         const event = new PointerEvent('pointerup', {
@@ -37,11 +35,9 @@ export class UICommandHandler {
           buttons: 0
         })
         element.dispatchEvent(event)
-        console.log(`[WsCommandClient] Dispatched pointerup on ${cmd.selector}`)
       } else if (cmd.action === 'click') {
         // Trigger click event
         element.click()
-        console.log(`[WsCommandClient] Clicked ${cmd.selector}`)
       }
     } catch (error) {
       console.error('[WsCommandClient] Error in clickElement:', error)
