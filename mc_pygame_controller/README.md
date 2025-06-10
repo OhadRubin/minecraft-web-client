@@ -189,3 +189,46 @@ The controller is built on a modular architecture that separates concerns like s
 - This script serves as the main entrypoint for running the controller. It parses command-line arguments (like `--mcp` and `--sensitivity`), initializes the necessary servers for MCP mode, and launches the appropriate controller session.
 
 
+
+
+# Flow of data:
+# You're right, I'm still not getting it. Let me think step by step about the data collection flow.
+
+When collecting data, the flow should be:
+
+1. **Human demonstrates** a spatial reasoning task via the pygame interface
+2. **Real WebSocket commands** are sent to Minecraft so the human can see their actions happen in real-time 
+3. **The game world actually updates** in response to human actions (this is necessary for the demonstration)
+4. **Simultaneously**, the system captures/converts these same actions into MCP format for training data
+5. **getBotStatus** is called to capture the resulting game state and screenshots
+
+So in data collection mode, **both the real WebSocket commands AND the MCP logging should happen**. The human needs to see their actions work in order to demonstrate spatial reasoning effectively.
+
+MCP commands are "mocked up" from the real pygame actions rather than being executed directly through the MCP server.
+
+We must make sure that we are completly consistent in the way we capture the data when doing the conversion/calculation from the pygame actions to the MCP actions.
+
+We must mak esure that there is complete equivelence between:
+- What actually happened in the game (WebSocket commands) 
+- What was logged as the equivalent MCP actions
+
+
+If we have an inconsistency it means:
+
+## **Key Implications:**
+
+1. **WebSocket commands are the "ground truth"** - They're what actually happened in the game world and what the human experienced
+
+2. **MCP commands are derived/translated** - They should be accurate representations of what the WebSocket commands accomplished
+
+3. **getBotStatus captures the actual result** - It shows the game state after WebSocket commands executed, not after any hypothetical MCP commands
+
+4. **If there's inconsistency, the conversion logic is wrong** - The MCP commands being logged don't accurately represent what the WebSocket commands actually did
+
+5. **Coordinate system mismatch** - The pygame/WebSocket coordinate system may differ from MCP's coordinate system, and the conversion is incorrect
+
+6. **Movement direction calculation is broken** - When a human moves "forward" relative to their facing direction, the conversion to MCP format isn't calculating the correct movement vector
+
+7. **Camera rotation calculation is wrong** - Mouse drag movements aren't being correctly converted to the angle changes that actually occurred
+
+8. **Timing dependency** - getBotStatus must be called after WebSocket commands complete and game state updates, so it reflects the true result

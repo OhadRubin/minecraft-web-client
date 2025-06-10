@@ -147,12 +147,6 @@ class PygameModeStrategy(ModeStrategy):
         command = {"type": "move", "x": x, "z": z}
         self.controller.send_command_sync(command)
 
-        # DISABLED: Old movement logging - now using continuous state tracking pattern
-        # The process_continuous_state method handles movement summarization
-        # Phase 2 enhancement: Queue parallel MCP execution for data collection
-        # if self.data_collection_enabled and self.mcp_server:
-        #     task_context = getattr(self.controller, "current_task_description", "")
-        #     self._queue_parallel_mcp_execution([command], task_context)
 
         # Log movement in pygame mode if logging enabled
         if self.controller.enable_logging and (abs(x) > 0.1 or abs(z) > 0.1):
@@ -422,34 +416,7 @@ class PygameModeStrategy(ModeStrategy):
 
         return ActionConverter.pygame_to_mcp_simple(pygame_actions)
 
-    def start_data_collection_session(self, task_description: str) -> str:
-        """Start a new data collection session."""
-        pass
-        # if not self.data_collector:
-        #     print("⚠️ Data collection not enabled for this strategy.")
-        #     return None
-
-        # return self.data_collector.start_collection_session(task_description)
-
-    def save_data_collection_session(self) -> str:
-        """Save the current data collection session."""
-        pass
-        # if self.data_collector:
-        #     return self.data_collector.save_session()
-        # return None
-
-    def cancel_data_collection_session(self) -> None:
-        """Cancel the current data collection session."""
-        # if self.data_collector:
-        #     self.data_collector.cancel_session()
-        # else:
-        #  print("⚠️ No data collection session to cancel.")
-
-    # def get_session_stats(self) -> Dict[str, Any]:
-    #     """Get current session statistics."""
-    #     if self.data_collector:
-    #         return self.data_collector.get_session_stats()
-    #     return {"status": "data_collection_disabled"}
+    
 
 
 class MCPModeStrategy(ModeStrategy):

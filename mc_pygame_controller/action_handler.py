@@ -44,61 +44,11 @@ class ActionHandler:
             "clear_path_pressed": lambda _: self.handle_clear_path(),
             "test_status_pressed": lambda _: self.controller.handle_test_status(),  # Stays on controller
             "save_demo_pressed": lambda _: self.controller.handle_save_demonstration(),  # Stays on controller
-            "context_debug_pressed": lambda _: self.handle_context_debug(),  # Debug context detection
             "hotbar_slot_pressed": self.handle_hotbar_slot,
-            # Data collection actions
-            "start_data_collection_session": self.handle_start_data_collection_session,
-            "save_data_collection_session": self.handle_save_data_collection_session,
-            "cancel_data_collection_session": self.handle_cancel_data_collection_session,
-            "task_description_entered": self.handle_task_description_entered,
+
         }
 
-    def _detect_inventory_mode(self) -> bool:
-        """DEPRECATED: Context detection now handled automatically by web client."""
-        return False  # Always return False since web client handles context
-
-    def _detect_current_context(self) -> str:
-        """
-        Detect the current interaction context.
-        This is a simplified version - in a full implementation, this could
-        check game state, UI elements, etc. like the WebSocket handlers do.
-        """
-        # For now, rely on manual tracking via inventory toggles
-        # In the future, this could be enhanced with more sophisticated detection
-        return self.state.current_context
-
-    def set_context(self, context: str) -> None:
-        """
-        Manually set the interaction context (useful for debugging).
-        Args:
-            context: Either "world" or "inventory"
-        """
-        if context not in ["world", "inventory"]:
-            if self.state.enable_logging:
-                print(
-                    f"Warning: Invalid context '{context}'. Must be 'world' or 'inventory'"
-                )
-            return
-
-        previous_context = self.state.current_context
-        self.state.current_context = context
-        self.state.inventory_open = context == "inventory"
-
-        if self.state.enable_logging:
-            print(f"Context manually changed from '{previous_context}' to '{context}'")
-
-    def get_context_info(self) -> Dict[str, Any]:
-        """Get current context information for debugging."""
-        return {
-            "current_context": self.state.current_context,
-            "inventory_open": self.state.inventory_open,
-            "last_inventory_toggle": self.state.last_inventory_toggle_time,
-            "time_since_toggle": (
-                time.time() - self.state.last_inventory_toggle_time
-                if self.state.last_inventory_toggle_time > 0
-                else 0
-            ),
-        }
+    
 
     # Helper methods for action dispatch dictionary
     def _handle_jump_action(self, state: bool):
@@ -408,8 +358,7 @@ class ActionHandler:
         just_pressed, _ = self._detect_key_edge(
             "context_debug", keys_pressed[pygame.K_g]
         )
-        if just_pressed:
-            self.handle_context_debug()
+
 
     def _log_mcp_command(self, tool: str, parameters: Dict[str, Any]):
         """Log MCP command if logging is enabled"""
@@ -417,107 +366,3 @@ class ActionHandler:
         if self.state.enable_logging:
             mcp_command = {"tool": tool, "parameters": parameters}
             print(f"LOGGED: {mcp_command}")
-
-    def handle_start_data_collection_session(self, value=None):
-        """Handle starting a new data collection session (F5 key)"""
-        if not self.state.data_collection_enabled:
-            print("⚠️ Data collection not enabled. Use --data-collection flag.")
-            return
-
-        if self.controller.data_collection_session_active:
-            print("⚠️ Data collection session already active. Save or cancel first.")
-            return
-
-        # Get task description from embedded text input field
-        task_description = self.controller.ui_manager.task_input_field.value.strip()
-
-        if not task_description:
-            task_description = "Spatial reasoning task"
-            # Set default in the text field so user can see what was used
-            self.controller.ui_manager.task_input_field.value = task_description
-
-        # Start session via strategy
-        if hasattr(self.strategy, "start_data_collection_session"):
-            session_id = self.strategy.start_data_collection_session(task_description)
-            if session_id:
-                self.controller.data_collection_session_active = True
-                self.controller.current_task_description = task_description
-                print(f"🎬 Started data collection session: {session_id}")
-                print(
-                    "💡 Perform your spatial reasoning actions. Press F6 to save when done."
-                )
-            else:
-                print("❌ Failed to start data collection session")
-        else:
-            print("⚠️ Data collection not supported in current mode")
-
-    def handle_save_data_collection_session(self, value=None):
-        """Handle saving the current data collection session (F6 key)"""
-        if not self.state.data_collection_enabled:
-            print("⚠️ Data collection not enabled. Use --data-collection flag.")
-            return
-
-        if not self.controller.data_collection_session_active:
-            print("⚠️ No active data collection session. Press F5 to start one.")
-            return
-
-        # Save session via strategy
-        if hasattr(self.strategy, "save_data_collection_session"):
-            filepath = self.strategy.save_data_collection_session()
-            if filepath:
-                print(f"💾 Data collection session saved to: {filepath}")
-                self.controller.data_collection_session_active = False
-                self.controller.current_task_description = ""
-                print("✅ Ready to start a new session with F5")
-            else:
-                print("❌ Failed to save data collection session")
-        else:
-            print("⚠️ Data collection not supported in current mode")
-
-    def handle_cancel_data_collection_session(self, value=None):
-        """Handle canceling the current data collection session (F7 key)"""
-        if not self.state.data_collection_enabled:
-            print("⚠️ Data collection not enabled. Use --data-collection flag.")
-            return
-
-        if not self.controller.data_collection_session_active:
-            print("⚠️ No active data collection session to cancel.")
-            return
-
-        # Cancel session via strategy
-        if hasattr(self.strategy, "cancel_data_collection_session"):
-            self.strategy.cancel_data_collection_session()
-            self.controller.data_collection_session_active = False
-            self.controller.current_task_description = ""
-            print("❌ Data collection session cancelled")
-            print("💡 Press F5 to start a new session")
-        else:
-            print("⚠️ Data collection not supported in current mode")
-
-    def handle_task_description_entered(self, task_description: str):
-        """Handle when user enters a task description in the text field"""
-        if not self.state.data_collection_enabled:
-            return
-
-        task_description = task_description.strip()
-        if task_description:
-            print(f"📝 Task description updated: '{task_description}'")
-            print("💡 Press F5 to start data collection with this task")
-        else:
-            print("⚠️ Empty task description entered")
-
-    def handle_context_debug(self):
-        """Handle context debug action"""
-        context_info = self.get_context_info()
-        print("🔍 Current context debug information:")
-        for key, value in context_info.items():
-            print(f"  {key}: {value}")
-
-        # Also show what mode clicks will use
-        inventory_mode = self._detect_inventory_mode()
-        print(f"  clicks_will_use_inventory_mode: {inventory_mode}")
-
-        if inventory_mode:
-            print("  ➡️ Next clicks will use documentMouseEvent (inventory mode)")
-        else:
-            print("  ➡️ Next clicks will use standard game clicks (world mode)")
