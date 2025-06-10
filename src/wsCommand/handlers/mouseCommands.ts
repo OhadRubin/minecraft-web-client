@@ -1,5 +1,6 @@
 import { MouseCommand } from '../types'
-import { moveWsCursorBy, emitWsMousemove, wsCursorState } from '../../react/WsCursor'
+import { gamepadUiCursorState, moveGamepadCursorBy } from '../../react/GamepadUiCursor'
+import { emitMousemove } from '../../controls'
 import { isGameActive } from '../../globalState'
 
 export class MouseCommandHandler {
@@ -17,20 +18,16 @@ export class MouseCommandHandler {
 
       if (hasModalsOpen) {
         // UI interaction with cursor positioning for modals (inventory, crafting, etc.)
-        if (wsCursorState.usingWsInput) {
-          // Auto-position cursor at center for UI interactions (if not explicitly positioned)
-          if (cmd.x === undefined && cmd.y === undefined) {
-            wsCursorState.x = 50
-            wsCursorState.y = 50
-            console.log('[WsCommandClient] Auto-positioned cursor at center (50%, 50%)')
-          } else if (cmd.x !== undefined && cmd.y !== undefined) {
-            wsCursorState.x = Math.min(100, Math.max(0, cmd.x))
-            wsCursorState.y = Math.min(100, Math.max(0, cmd.y))
-            console.log(`[WsCommandClient] Positioned cursor at ${wsCursorState.x}%, ${wsCursorState.y}%`)
+        if (gamepadUiCursorState.display) {
+          // Handle explicit positioning if provided
+          if (cmd.x !== undefined && cmd.y !== undefined) {
+            gamepadUiCursorState.x = Math.min(100, Math.max(0, cmd.x))
+            gamepadUiCursorState.y = Math.min(100, Math.max(0, cmd.y))
+            console.log(`[WsCommandClient] Positioned cursor at ${gamepadUiCursorState.x}%, ${gamepadUiCursorState.y}%`)
           }
 
-          const x = (wsCursorState.x / 100) * window.innerWidth
-          const y = (wsCursorState.y / 100) * window.innerHeight
+          const x = (gamepadUiCursorState.x / 100) * window.innerWidth
+          const y = (gamepadUiCursorState.y / 100) * window.innerHeight
           const event = new MouseEvent('mousedown', {
             bubbles: true,
             cancelable: true,
@@ -72,20 +69,16 @@ export class MouseCommandHandler {
 
       if (hasModalsOpen) {
         // UI interaction with cursor positioning for modals (inventory, crafting, etc.)
-        if (wsCursorState.usingWsInput) {
-          // Auto-position cursor at center for UI interactions (if not explicitly positioned)
-          if (cmd.x === undefined && cmd.y === undefined) {
-            wsCursorState.x = 50
-            wsCursorState.y = 50
-            console.log('[WsCommandClient] Auto-positioned cursor at center (50%, 50%)')
-          } else if (cmd.x !== undefined && cmd.y !== undefined) {
-            wsCursorState.x = Math.min(100, Math.max(0, cmd.x))
-            wsCursorState.y = Math.min(100, Math.max(0, cmd.y))
-            console.log(`[WsCommandClient] Positioned cursor at ${wsCursorState.x}%, ${wsCursorState.y}%`)
+        if (gamepadUiCursorState.display) {
+          // Handle explicit positioning if provided
+          if (cmd.x !== undefined && cmd.y !== undefined) {
+            gamepadUiCursorState.x = Math.min(100, Math.max(0, cmd.x))
+            gamepadUiCursorState.y = Math.min(100, Math.max(0, cmd.y))
+            console.log(`[WsCommandClient] Positioned cursor at ${gamepadUiCursorState.x}%, ${gamepadUiCursorState.y}%`)
           }
 
-          const x = (wsCursorState.x / 100) * window.innerWidth
-          const y = (wsCursorState.y / 100) * window.innerHeight
+          const x = (gamepadUiCursorState.x / 100) * window.innerWidth
+          const y = (gamepadUiCursorState.y / 100) * window.innerHeight
           const event = new MouseEvent('mouseup', {
             bubbles: true,
             cancelable: true,
@@ -127,20 +120,16 @@ export class MouseCommandHandler {
 
       if (hasModalsOpen) {
         // UI interaction with cursor positioning for modals (inventory, crafting, etc.)
-        if (wsCursorState.usingWsInput) {
-          // Auto-position cursor at center for UI interactions (if not explicitly positioned)
-          if (cmd.x === undefined && cmd.y === undefined) {
-            wsCursorState.x = 50
-            wsCursorState.y = 50
-            console.log('[WsCommandClient] Auto-positioned cursor at center (50%, 50%)')
-          } else if (cmd.x !== undefined && cmd.y !== undefined) {
-            wsCursorState.x = Math.min(100, Math.max(0, cmd.x))
-            wsCursorState.y = Math.min(100, Math.max(0, cmd.y))
-            console.log(`[WsCommandClient] Positioned cursor at ${wsCursorState.x}%, ${wsCursorState.y}%`)
+        if (gamepadUiCursorState.display) {
+          // Handle explicit positioning if provided
+          if (cmd.x !== undefined && cmd.y !== undefined) {
+            gamepadUiCursorState.x = Math.min(100, Math.max(0, cmd.x))
+            gamepadUiCursorState.y = Math.min(100, Math.max(0, cmd.y))
+            console.log(`[WsCommandClient] Positioned cursor at ${gamepadUiCursorState.x}%, ${gamepadUiCursorState.y}%`)
           }
 
-          const x = (wsCursorState.x / 100) * window.innerWidth
-          const y = (wsCursorState.y / 100) * window.innerHeight
+          const x = (gamepadUiCursorState.x / 100) * window.innerWidth
+          const y = (gamepadUiCursorState.y / 100) * window.innerHeight
           const event = new MouseEvent('mousedown', {
             bubbles: true,
             cancelable: true,
@@ -182,20 +171,16 @@ export class MouseCommandHandler {
 
       if (hasModalsOpen) {
         // UI interaction with cursor positioning for modals (inventory, crafting, etc.)
-        if (wsCursorState.usingWsInput) {
-          // Auto-position cursor at center for UI interactions (if not explicitly positioned)
-          if (cmd.x === undefined && cmd.y === undefined) {
-            wsCursorState.x = 50
-            wsCursorState.y = 50
-            console.log('[WsCommandClient] Auto-positioned cursor at center (50%, 50%)')
-          } else if (cmd.x !== undefined && cmd.y !== undefined) {
-            wsCursorState.x = Math.min(100, Math.max(0, cmd.x))
-            wsCursorState.y = Math.min(100, Math.max(0, cmd.y))
-            console.log(`[WsCommandClient] Positioned cursor at ${wsCursorState.x}%, ${wsCursorState.y}%`)
+        if (gamepadUiCursorState.display) {
+          // Handle explicit positioning if provided
+          if (cmd.x !== undefined && cmd.y !== undefined) {
+            gamepadUiCursorState.x = Math.min(100, Math.max(0, cmd.x))
+            gamepadUiCursorState.y = Math.min(100, Math.max(0, cmd.y))
+            console.log(`[WsCommandClient] Positioned cursor at ${gamepadUiCursorState.x}%, ${gamepadUiCursorState.y}%`)
           }
 
-          const x = (wsCursorState.x / 100) * window.innerWidth
-          const y = (wsCursorState.y / 100) * window.innerHeight
+          const x = (gamepadUiCursorState.x / 100) * window.innerWidth
+          const y = (gamepadUiCursorState.y / 100) * window.innerHeight
           const event = new MouseEvent('mouseup', {
             bubbles: true,
             cancelable: true,
@@ -351,16 +336,16 @@ export class MouseCommandHandler {
       console.log(`[WsCommandClient] Moving cursor to position: ${cmd.x}, ${cmd.z}`)
       if (cmd.x !== undefined && cmd.z !== undefined) {
         // Set absolute cursor position (0-100 percentage)
-        wsCursorState.x = Math.min(100, Math.max(0, cmd.x))
-        wsCursorState.y = Math.min(100, Math.max(0, cmd.z))
-        emitWsMousemove()
-        console.log(`[WsCommandClient] Successfully moved cursor to ${wsCursorState.x}%, ${wsCursorState.y}%`)
+        gamepadUiCursorState.x = Math.min(100, Math.max(0, cmd.x))
+        gamepadUiCursorState.y = Math.min(100, Math.max(0, cmd.z))
+        emitMousemove()
+        console.log(`[WsCommandClient] Successfully moved cursor to ${gamepadUiCursorState.x}%, ${gamepadUiCursorState.y}%`)
       } else if (cmd.movementX !== undefined || cmd.movementY !== undefined) {
         // Relative cursor movement
         const dx = (cmd.movementX || 0) * 0.5 // Adjust sensitivity as needed
         const dy = (cmd.movementY || 0) * 0.5
-        moveWsCursorBy(dx, dy)
-        emitWsMousemove()
+        moveGamepadCursorBy(dx, dy)
+        emitMousemove()
         console.log(`[WsCommandClient] Moved cursor by ${dx}, ${dy}`)
       }
     } catch (error) {

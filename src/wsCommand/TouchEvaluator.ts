@@ -1,5 +1,4 @@
 import { MouseCommand } from './types'
-import { wsCursorState } from '../react/WsCursor'
 import { miscUiState } from '../globalState'
 import { MouseCommandHandler } from './handlers/mouseCommands'
 import { MovementCommandHandler } from './handlers/movementCommands'
@@ -31,8 +30,7 @@ export class TouchEvaluator {
 
   async execute(cmd: MouseCommand) {
     // Enable WebSocket input mode when any command is received
-    wsCursorState.usingWsInput = true
-    miscUiState.usingGamepadInput = true
+    miscUiState.usingWsInput = true
 
     switch (cmd.type) {
       case 'control':

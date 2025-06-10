@@ -1,6 +1,7 @@
 import { MouseCommand } from '../types'
 import { onCameraMove } from '../../cameraRotationControls'
-import { moveWsCursorBy, emitWsMousemove } from '../../react/WsCursor'
+import { moveGamepadCursorBy } from '../../react/GamepadUiCursor'
+import { emitMousemove } from '../../controls'
 import { miscUiState } from '../../globalState'
 
 export class MovementCommandHandler {
@@ -34,20 +35,20 @@ export class MovementCommandHandler {
     if (cmd.x !== undefined && cmd.z !== undefined) {
       const dx = cmd.x * 2
       const dy = cmd.z * 2
-      moveWsCursorBy(dx, dy)
-      emitWsMousemove()
+      moveGamepadCursorBy(dx, dy)
+      emitMousemove()
     }
   }
 
   async handleLook(cmd: MouseCommand) {
     onCameraMove({ movementX: cmd.movementX ?? 0, movementY: cmd.movementY ?? 0, type: 'ws' })
 
-    // Also move cursor when using gamepad input (for inventory/UI navigation)
-    if (miscUiState.usingGamepadInput && (cmd.movementX !== undefined || cmd.movementY !== undefined)) {
+    // Also move cursor when using gamepad or WebSocket input (for inventory/UI navigation)
+    if ((miscUiState.usingGamepadInput || miscUiState.usingWsInput) && (cmd.movementX !== undefined || cmd.movementY !== undefined)) {
       const dx = (cmd.movementX || 0) * 0.1 // Adjust sensitivity as needed
       const dy = (cmd.movementY || 0) * 0.1
-      moveWsCursorBy(dx, dy)
-      emitWsMousemove()
+      moveGamepadCursorBy(dx, dy)
+      emitMousemove()
     }
   }
 
