@@ -128,6 +128,7 @@ export const miscUiState = proxy({
   fsReady: false,
   singleplayerAvailable: false,
   usingGamepadInput: false,
+  usingWsInput: false,
   appConfig: null as AppConfig | null,
   displaySearchInput: false,
   displayFullmap: false

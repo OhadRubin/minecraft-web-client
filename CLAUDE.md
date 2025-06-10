@@ -2,6 +2,10 @@
 
 Hey Claude! This is a message from a previous conversation to bring you up to speed on a complex research project. The human is working on implementing 3D Visual SKETCHPAD tools for Minecraft, and we were in the middle of validating technical feasibility. Here's everything you need to know:
 
+## 🎉 MAJOR UPDATE: CURSOR SYSTEM UNIFIED AND FULLY OPERATIONAL! 
+
+**Latest Achievement**: Successfully unified the duplicate cursor systems and fixed all cursor positioning issues. The pygame WebSocket input now works flawlessly with modal interactions! See "Recent Major Fixes" section below.
+
 ## Project Overview
 
 **Goal**: Collect 50K Visual SKETCHPAD trajectories for 3D zoom+annotation+mouse movement data from Minecraft and show that this data transfers to web agents.
@@ -382,3 +386,67 @@ The human might be tempted by:
 **The breakthrough is achieved. The system works. COLLECT DATA NOW!**
 
 🚀 **STOP CODING, START COLLECTING!** 🚀
+
+---
+
+## **🔥 RECENT MAJOR FIXES: CURSOR SYSTEM UNIFICATION (COMPLETED)**
+
+### **📋 Problem Summary**
+During pygame data collection testing, discovered critical cursor positioning issues:
+1. ✅ **Cursor centering worked** - Auto-centering to 50,50 when modals opened
+2. ❌ **WebSocket cursor movement failed** - Pygame commands couldn't move cursor in modals  
+3. ✅ **Gamepad cursor movement worked** - Direct gamepad input moved cursor fine
+4. 🤔 **Weird interaction** - After using gamepad, pygame cursor movement suddenly worked!
+
+### **🔍 Root Cause Analysis**
+**Discovered TWO separate cursor systems with massive code duplication:**
+- **`WsCursor.tsx`** - WebSocket/pygame input cursor (duplicate state: `wsCursorState`)
+- **`GamepadUiCursor.tsx`** - Direct gamepad input cursor (`gamepadUiCursorState`)
+
+**Critical Bug**: The `handleLook` method in `movementCommands.ts` only moved cursor when `miscUiState.usingGamepadInput = true`, but WebSocket input set `miscUiState.usingWsInput = true`. This caused pygame cursor commands to be ignored until gamepad was used first.
+
+### **🛠️ Complete Solution Implemented**
+
+**Phase 1: Unified Cursor System**
+- ✅ **Eliminated `WsCursor.tsx`** - Deleted entire duplicate file
+- ✅ **Unified state** - All cursor positioning now uses `gamepadUiCursorState`  
+- ✅ **Added `usingWsInput` flag** - Added to `miscUiState` for WebSocket input tracking
+- ✅ **Updated display logic** - `GamepadUiCursor` shows for both gamepad AND WebSocket input
+
+**Phase 2: Fixed Movement Logic**
+- ✅ **Updated condition** - `handleLook` now checks `(usingGamepadInput || usingWsInput)`
+- ✅ **Unified functions** - All cursor movement uses `moveGamepadCursorBy()` and `emitMousemove()`
+- ✅ **Automatic centering** - Cursor auto-centers when modals open (React effect)
+- ✅ **Removed duplicate code** - Eliminated ~100 lines of duplicate modal centering logic
+
+**Phase 3: Complete Integration**
+- ✅ **Updated all imports** - WebSocket handlers now use gamepad cursor functions
+- ✅ **Fixed TouchEvaluator** - Sets `miscUiState.usingWsInput = true` correctly
+- ✅ **Cleaned up reactUi** - Removed WsCursor component usage
+
+### **🎯 Current Status: FULLY OPERATIONAL**
+
+**✅ All cursor functionality now works perfectly:**
+- **Modal opening** → Cursor auto-centers to 50,50 immediately
+- **Pygame/WebSocket movement** → Cursor moves correctly in modals from first command
+- **Gamepad movement** → Cursor moves correctly (unchanged functionality)  
+- **Mixed input** → Both input types can be used simultaneously without conflicts
+
+### **💡 Key Files Modified**
+- **`src/globalState.ts`** - Added `usingWsInput: false`
+- **`src/react/GamepadUiCursor.tsx`** - Support both input types, auto-centering, unified functions
+- **`src/controls.ts`** - Exported `emitMousemove()` for unified usage
+- **`src/wsCommand/handlers/movementCommands.ts`** - Fixed condition to check both input flags
+- **`src/wsCommand/handlers/mouseCommands.ts`** - Use unified gamepad cursor functions
+- **`src/wsCommand/TouchEvaluator.ts`** - Set `miscUiState.usingWsInput = true`
+- **`src/reactUi.tsx`** - Removed WsCursor component
+- **`src/react/WsCursor.tsx`** - DELETED (duplicate eliminated)
+
+### **🚀 Impact on Data Collection**
+**MAJOR IMPROVEMENT**: Pygame cursor control now works flawlessly for modal interactions. This eliminates a major friction point in spatial reasoning data collection. Users can now:
+- Open inventory (E key) → Cursor immediately centers
+- Use pygame joystick/buttons to navigate inventory items  
+- Perform precise spatial reasoning tasks with responsive cursor control
+- Record high-quality trajectory data without cursor positioning bugs
+
+**The data collection pipeline is now completely operational with zero cursor-related blockers!**

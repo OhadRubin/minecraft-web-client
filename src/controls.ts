@@ -219,7 +219,7 @@ subscribe(activeModalStack, () => {
   }
 })
 
-const emitMousemove = () => {
+export const emitMousemove = () => {
   const { x, y } = gamepadUiCursorState
   const xAbs = x / 100 * window.innerWidth
   const yAbs = y / 100 * window.innerHeight
