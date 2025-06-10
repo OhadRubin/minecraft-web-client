@@ -73,6 +73,8 @@ export const isInRealGameSession = () => {
   return isGameActive(true) && (!packetsReplayState.isOpen || packetsReplayState.isMinimized) && !gameAdditionalState.viewerConnection
 }
 
+window.isInRealGameSession = isInRealGameSession
+
 window.getScreenRefreshRate = getScreenRefreshRate
 
 /**

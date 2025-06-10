@@ -138,6 +138,7 @@ export const isGameActive = (foregroundCheck: boolean) => {
   return miscUiState.gameLoaded
 }
 
+window.isGameActive = isGameActive
 window.miscUiState = miscUiState
 
 // state that is not possible to get via bot and in-game specific

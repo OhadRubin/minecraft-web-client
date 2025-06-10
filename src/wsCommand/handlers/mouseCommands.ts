@@ -1,5 +1,6 @@
 import { MouseCommand } from '../types'
 import { moveWsCursorBy, emitWsMousemove, wsCursorState } from '../../react/WsCursor'
+import { isGameActive } from '../../globalState'
 
 export class MouseCommandHandler {
   // Track active button states to prevent duplicate actions
@@ -11,29 +12,53 @@ export class MouseCommandHandler {
 
   async handleLeftDown(cmd: MouseCommand) {
     try {
-      console.log('[WsCommandClient] Executing leftDown command (UI interaction)')
+      const hasModalsOpen = !isGameActive(true)
+      console.log(`[WsCommandClient] Executing leftDown command, hasModalsOpen=${hasModalsOpen}`)
 
-      // UI interaction with cursor positioning
-      if (wsCursorState.usingWsInput) {
-        const x = (wsCursorState.x / 100) * window.innerWidth
-        const y = (wsCursorState.y / 100) * window.innerHeight
-        const event = new MouseEvent('mousedown', {
-          bubbles: true,
-          cancelable: true,
-          clientX: x,
-          clientY: y,
-          button: 0,
-          buttons: 1
-        })
-        const elementAtCursor = document.elementFromPoint(x, y)
-        if (elementAtCursor) {
-          elementAtCursor.dispatchEvent(event)
-          console.log(`[WsCommandClient] Left clicked at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+      if (hasModalsOpen) {
+        // UI interaction with cursor positioning for modals (inventory, crafting, etc.)
+        if (wsCursorState.usingWsInput) {
+          // Auto-position cursor at center for UI interactions (if not explicitly positioned)
+          if (cmd.x === undefined && cmd.y === undefined) {
+            wsCursorState.x = 50
+            wsCursorState.y = 50
+            console.log('[WsCommandClient] Auto-positioned cursor at center (50%, 50%)')
+          } else if (cmd.x !== undefined && cmd.y !== undefined) {
+            wsCursorState.x = Math.min(100, Math.max(0, cmd.x))
+            wsCursorState.y = Math.min(100, Math.max(0, cmd.y))
+            console.log(`[WsCommandClient] Positioned cursor at ${wsCursorState.x}%, ${wsCursorState.y}%`)
+          }
+
+          const x = (wsCursorState.x / 100) * window.innerWidth
+          const y = (wsCursorState.y / 100) * window.innerHeight
+          const event = new MouseEvent('mousedown', {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: y,
+            button: 0,
+            buttons: 1
+          })
+          const elementAtCursor = document.elementFromPoint(x, y)
+          if (elementAtCursor) {
+            elementAtCursor.dispatchEvent(event)
+            console.log(`[WsCommandClient] Left clicked at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+          } else {
+            console.log('[WsCommandClient] No element found at cursor position')
+          }
         } else {
-          console.log('[WsCommandClient] No element found at cursor position')
+          console.log('[WsCommandClient] WebSocket input not active, ignoring modal leftDown')
         }
       } else {
-        console.log('[WsCommandClient] WebSocket input not active, ignoring leftDown')
+        // Game world interaction: use documentMouseEvent
+        console.log('[WsCommandClient] Using documentMouseEvent for game world leftDown')
+        await this.handleDocumentMouseEvent({
+          ...cmd,
+          type: 'documentMouseEvent',
+          button: 0,
+          action: 'down',
+          updateMouse: true
+        })
       }
     } catch (error) {
       console.error('[WsCommandClient] Error in leftDown:', error)
@@ -42,29 +67,53 @@ export class MouseCommandHandler {
 
   async handleLeftUp(cmd: MouseCommand) {
     try {
-      console.log('[WsCommandClient] Executing leftUp command (UI interaction)')
+      const hasModalsOpen = !isGameActive(true)
+      console.log(`[WsCommandClient] Executing leftUp command, hasModalsOpen=${hasModalsOpen}`)
 
-      // UI interaction with cursor positioning
-      if (wsCursorState.usingWsInput) {
-        const x = (wsCursorState.x / 100) * window.innerWidth
-        const y = (wsCursorState.y / 100) * window.innerHeight
-        const event = new MouseEvent('mouseup', {
-          bubbles: true,
-          cancelable: true,
-          clientX: x,
-          clientY: y,
-          button: 0,
-          buttons: 0
-        })
-        const elementAtCursor = document.elementFromPoint(x, y)
-        if (elementAtCursor) {
-          elementAtCursor.dispatchEvent(event)
-          console.log(`[WsCommandClient] Left click released at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+      if (hasModalsOpen) {
+        // UI interaction with cursor positioning for modals (inventory, crafting, etc.)
+        if (wsCursorState.usingWsInput) {
+          // Auto-position cursor at center for UI interactions (if not explicitly positioned)
+          if (cmd.x === undefined && cmd.y === undefined) {
+            wsCursorState.x = 50
+            wsCursorState.y = 50
+            console.log('[WsCommandClient] Auto-positioned cursor at center (50%, 50%)')
+          } else if (cmd.x !== undefined && cmd.y !== undefined) {
+            wsCursorState.x = Math.min(100, Math.max(0, cmd.x))
+            wsCursorState.y = Math.min(100, Math.max(0, cmd.y))
+            console.log(`[WsCommandClient] Positioned cursor at ${wsCursorState.x}%, ${wsCursorState.y}%`)
+          }
+
+          const x = (wsCursorState.x / 100) * window.innerWidth
+          const y = (wsCursorState.y / 100) * window.innerHeight
+          const event = new MouseEvent('mouseup', {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: y,
+            button: 0,
+            buttons: 0
+          })
+          const elementAtCursor = document.elementFromPoint(x, y)
+          if (elementAtCursor) {
+            elementAtCursor.dispatchEvent(event)
+            console.log(`[WsCommandClient] Left click released at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+          } else {
+            console.log('[WsCommandClient] No element found at cursor position')
+          }
         } else {
-          console.log('[WsCommandClient] No element found at cursor position')
+          console.log('[WsCommandClient] WebSocket input not active, ignoring modal leftUp')
         }
       } else {
-        console.log('[WsCommandClient] WebSocket input not active, ignoring leftUp')
+        // Game world interaction: use documentMouseEvent
+        console.log('[WsCommandClient] Using documentMouseEvent for game world leftUp')
+        await this.handleDocumentMouseEvent({
+          ...cmd,
+          type: 'documentMouseEvent',
+          button: 0,
+          action: 'up',
+          updateMouse: false
+        })
       }
     } catch (error) {
       console.error('[WsCommandClient] Error in leftUp:', error)
@@ -73,62 +122,53 @@ export class MouseCommandHandler {
 
   async handleRightDown(cmd: MouseCommand) {
     try {
-      console.log('[WsCommandClient] Executing rightDown command (context-aware)')
+      const hasModalsOpen = !isGameActive(true)
+      console.log(`[WsCommandClient] Executing rightDown command, hasModalsOpen=${hasModalsOpen}`)
 
-      // Detect if inventory is open by checking bot state and DOM elements
-      const bot = (window as any).bot
-      const hasActiveWindow = bot?.currentWindow && bot.currentWindow.type !== null
-      const inventoryElement = document.querySelector('.inventory-window, .inventory, [class*="inventory"], [data-testid*="inventory"]') as HTMLElement
-      const hasModals = document.querySelector('[class*="modal"], [id*="modal"], .react-modal')
-      const gameElement = document.querySelector('canvas, #game-canvas, [class*="game"]')
-      const isGameFocused = gameElement && document.activeElement === gameElement
-      
-      // More comprehensive context detection
-      const isInventoryContext = hasActiveWindow || 
-                                 (inventoryElement && inventoryElement.style.display !== 'none') || 
-                                 hasModals || 
-                                 !isGameFocused
-      
-      console.log(`[WsCommandClient] Context detection: bot.currentWindow=${bot?.currentWindow?.type}, hasActiveWindow=${hasActiveWindow}, hasModals=${!!hasModals}, isGameFocused=${isGameFocused}, inventory/UI context = ${isInventoryContext}`)
+      if (hasModalsOpen) {
+        // UI interaction with cursor positioning for modals (inventory, crafting, etc.)
+        if (wsCursorState.usingWsInput) {
+          // Auto-position cursor at center for UI interactions (if not explicitly positioned)
+          if (cmd.x === undefined && cmd.y === undefined) {
+            wsCursorState.x = 50
+            wsCursorState.y = 50
+            console.log('[WsCommandClient] Auto-positioned cursor at center (50%, 50%)')
+          } else if (cmd.x !== undefined && cmd.y !== undefined) {
+            wsCursorState.x = Math.min(100, Math.max(0, cmd.x))
+            wsCursorState.y = Math.min(100, Math.max(0, cmd.y))
+            console.log(`[WsCommandClient] Positioned cursor at ${wsCursorState.x}%, ${wsCursorState.y}%`)
+          }
 
-      if (isInventoryContext && wsCursorState.usingWsInput) {
-        // UI interaction with cursor positioning for inventory
-        const x = (wsCursorState.x / 100) * window.innerWidth
-        const y = (wsCursorState.y / 100) * window.innerHeight
-        const event = new MouseEvent('mousedown', {
-          bubbles: true,
-          cancelable: true,
-          clientX: x,
-          clientY: y,
-          button: 2,
-          buttons: 2
-        })
-        const elementAtCursor = document.elementFromPoint(x, y)
-        if (elementAtCursor) {
-          elementAtCursor.dispatchEvent(event)
-          console.log(`[WsCommandClient] Right clicked at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+          const x = (wsCursorState.x / 100) * window.innerWidth
+          const y = (wsCursorState.y / 100) * window.innerHeight
+          const event = new MouseEvent('mousedown', {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: y,
+            button: 2,
+            buttons: 2
+          })
+          const elementAtCursor = document.elementFromPoint(x, y)
+          if (elementAtCursor) {
+            elementAtCursor.dispatchEvent(event)
+            console.log(`[WsCommandClient] Right clicked at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+          } else {
+            console.log('[WsCommandClient] No element found at cursor position')
+          }
         } else {
-          console.log('[WsCommandClient] No element found at cursor position')
+          console.log('[WsCommandClient] WebSocket input not active, ignoring modal rightDown')
         }
       } else {
-        // Use documentMouseEvent for game world
-        console.log('[WsCommandClient] Using documentMouseEvent for game world context')
-        const event = new MouseEvent('mousedown', {
-          bubbles: true,
-          cancelable: true,
+        // Game world interaction: use documentMouseEvent
+        console.log('[WsCommandClient] Using documentMouseEvent for game world rightDown')
+        await this.handleDocumentMouseEvent({
+          ...cmd,
+          type: 'documentMouseEvent',
           button: 2,
-          buttons: 2
+          action: 'down',
+          updateMouse: true
         })
-        Object.defineProperty(event, 'isWebSocketEvent', {
-          value: true,
-          writable: false,
-          enumerable: false
-        })
-        document.dispatchEvent(event)
-        if (this.bot?.mouse?.update) {
-          console.log('[WsCommandClient] Calling bot.mouse.update() after game world rightDown')
-          this.bot.mouse.update()
-        }
       }
     } catch (error) {
       console.error('[WsCommandClient] Error in rightDown:', error)
@@ -137,59 +177,53 @@ export class MouseCommandHandler {
 
   async handleRightUp(cmd: MouseCommand) {
     try {
-      console.log('[WsCommandClient] Executing rightUp command (context-aware)')
+      const hasModalsOpen = !isGameActive(true)
+      console.log(`[WsCommandClient] Executing rightUp command, hasModalsOpen=${hasModalsOpen}`)
 
-      // Detect if inventory is open by checking bot state and DOM elements
-      const bot = (window as any).bot
-      const hasActiveWindow = bot?.currentWindow && bot.currentWindow.type !== null
-      const inventoryElement = document.querySelector('.inventory-window, .inventory, [class*="inventory"], [data-testid*="inventory"]') as HTMLElement
-      const hasModals = document.querySelector('[class*="modal"], [id*="modal"], .react-modal')
-      const gameElement = document.querySelector('canvas, #game-canvas, [class*="game"]')
-      const isGameFocused = gameElement && document.activeElement === gameElement
-      
-      // More comprehensive context detection
-      const isInventoryContext = hasActiveWindow || 
-                                 (inventoryElement && inventoryElement.style.display !== 'none') || 
-                                 hasModals || 
-                                 !isGameFocused
-      
-      console.log(`[WsCommandClient] Context detection: bot.currentWindow=${bot?.currentWindow?.type}, hasActiveWindow=${hasActiveWindow}, hasModals=${!!hasModals}, isGameFocused=${isGameFocused}, inventory/UI context = ${isInventoryContext}`)
+      if (hasModalsOpen) {
+        // UI interaction with cursor positioning for modals (inventory, crafting, etc.)
+        if (wsCursorState.usingWsInput) {
+          // Auto-position cursor at center for UI interactions (if not explicitly positioned)
+          if (cmd.x === undefined && cmd.y === undefined) {
+            wsCursorState.x = 50
+            wsCursorState.y = 50
+            console.log('[WsCommandClient] Auto-positioned cursor at center (50%, 50%)')
+          } else if (cmd.x !== undefined && cmd.y !== undefined) {
+            wsCursorState.x = Math.min(100, Math.max(0, cmd.x))
+            wsCursorState.y = Math.min(100, Math.max(0, cmd.y))
+            console.log(`[WsCommandClient] Positioned cursor at ${wsCursorState.x}%, ${wsCursorState.y}%`)
+          }
 
-      if (isInventoryContext && wsCursorState.usingWsInput) {
-        // UI interaction with cursor positioning for inventory
-        const x = (wsCursorState.x / 100) * window.innerWidth
-        const y = (wsCursorState.y / 100) * window.innerHeight
-        const event = new MouseEvent('mouseup', {
-          bubbles: true,
-          cancelable: true,
-          clientX: x,
-          clientY: y,
-          button: 2,
-          buttons: 0
-        })
-        const elementAtCursor = document.elementFromPoint(x, y)
-        if (elementAtCursor) {
-          elementAtCursor.dispatchEvent(event)
-          console.log(`[WsCommandClient] Right click released at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+          const x = (wsCursorState.x / 100) * window.innerWidth
+          const y = (wsCursorState.y / 100) * window.innerHeight
+          const event = new MouseEvent('mouseup', {
+            bubbles: true,
+            cancelable: true,
+            clientX: x,
+            clientY: y,
+            button: 2,
+            buttons: 0
+          })
+          const elementAtCursor = document.elementFromPoint(x, y)
+          if (elementAtCursor) {
+            elementAtCursor.dispatchEvent(event)
+            console.log(`[WsCommandClient] Right click released at cursor position (${x}, ${y}) on element:`, elementAtCursor.tagName)
+          } else {
+            console.log('[WsCommandClient] No element found at cursor position')
+          }
         } else {
-          console.log('[WsCommandClient] No element found at cursor position')
+          console.log('[WsCommandClient] WebSocket input not active, ignoring modal rightUp')
         }
       } else {
-        // Use documentMouseEvent for game world
-        console.log('[WsCommandClient] Using documentMouseEvent for game world context')
-        const event = new MouseEvent('mouseup', {
-          bubbles: true,
-          cancelable: true,
+        // Game world interaction: use documentMouseEvent
+        console.log('[WsCommandClient] Using documentMouseEvent for game world rightUp')
+        await this.handleDocumentMouseEvent({
+          ...cmd,
+          type: 'documentMouseEvent',
           button: 2,
-          buttons: 0
+          action: 'up',
+          updateMouse: false
         })
-        Object.defineProperty(event, 'isWebSocketEvent', {
-          value: true,
-          writable: false,
-          enumerable: false
-        })
-        document.dispatchEvent(event)
-        console.log('[WsCommandClient] Game world rightUp completed')
       }
     } catch (error) {
       console.error('[WsCommandClient] Error in rightUp:', error)

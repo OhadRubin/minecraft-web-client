@@ -1,0 +1,197 @@
+pygame output:
+```
+>> python -m mc_pygame_controller.controller --data-collection 
+/Users/ohadr/.pyenv/versions/3.10.15/lib/python3.10/site-packages/pygame/pkgdata.py:25: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import resource_stream, resource_exists
+pygame 2.6.0 (SDL 2.28.4, Python 3.10.15)
+Hello from the pygame community. https://www.pygame.org/contribute.html
+🔧 Created MCP server for data collection
+🔗 LookPathTracker execution callback connected
+🔧 PygameModeStrategy: Initializing MOCK + OBSERVE mode
+🎭 Actions will be mocked, only getBotStatus executed for real observation
+🔧 PygameModeStrategy: Mode=MOCK+OBSERVE, Server=✅, Data Collection=✅
+🎬 Data collection enabled!
+📋 Hotkeys: F5=Start session | F6=Save session | F7=Cancel session
+💡 This will capture spatial reasoning data for AI training
+Starting Minecraft Controller in PYGAME mode...
+🔧 Data collection will be initialized directly in async context
+💡 No background thread needed - using MCP mode pattern
+Commands will be forwarded to the Minecraft bot
+Make sure the Minecraft web client server is running on localhost:8081
+Connecting to ws://localhost:8081...
+🔄 Using async loop for data collection compatibility
+🔧 Initializing MCP server in main async context (like MCP mode)...
+Connected to Minecraft Web Client!
+Registered as pygame client
+✅ MCP server initialized successfully
+🧪 Testing getBotStatus at startup (pygame data collection mode)...
+📊 Pygame startup getBotStatus result: 
+====
+Position: (19, 63, -29) facing West (-109.95°, 17.25°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 1
+Hotbar: [0: Oak Sapling x3]
+Looking at: Grass Block (cannot dig - too far away)
+====
+
+✅ Mock+observe data collection mode initialized
+🎭 Actions will be mocked, getBotStatus will be executed for real observation
+✅ Async components initialized
+🔍 Camera state change: clicking=True, was_clicking=False
+🖱️ Mouse pressed in camera area - starting drag tracking
+🖱️ Started drag operation - accumulating movements
+🔍 Camera state change: clicking=False, was_clicking=True
+🖱️ Mouse released - ending drag tracking
+🖱️ Drag completed (0.7s) - executing command
+📊 Drag analysis (drag_complete):
+📊 Movement Analysis:
+  • Overall angle: -1.9° (East)
+  • X component: 0.0° (0°)
+  • Y component: -90.0° (-90°)
+  • Movements: 18 X-only, 0 Y-only, 5 mixed
+  • Efficiency: 99.9%
+   🎯 Camera rotation: 60.0°, 2.0°
+   ✅ Executing MCP command
+🎭 Camera drag action: lookAngle({'xAngle': 60.0, 'yAngle': 2.0, 'speed': 'normal'})
+🎭 Mock actions: []
+LOGGED: {'tool': 'lookAngle', 'parameters': {'xAngle': 60.0, 'yAngle': 2.0, 'speed': 'normal'}}
+🗑️ Reset drag tracking data
+📊 RUNTIME getBotStatus result:
+
+====
+Position: (19, 63, -29) facing South (-195.75°, 20.25°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 1
+Hotbar: [0: Oak Sapling x3]
+Looking at: pointing at a block that is too far away
+====
+
+
+📊 pygame_actions: [{'type': 'lookAngle', 'xAngle': 60.0, 'yAngle': 2.0, 'speed': 'normal'}]
+📊 mcp_actions: []
+wwwwwwwwwwwwwLOGGED: {'tool': 'walk', 'parameters': {'duration': 2000}}
+🚶‍♂️ Movement started - beginning walk tracking
+🚶‍♂️ Movement ended - summarizing walk action
+📊 Walk summary: distance=0.00, duration=387ms
+🎭 Mock actions: ['walk']
+📊 RUNTIME getBotStatus result:
+
+====
+Position: (19, 63, -29) facing South (-195.75°, 20.25°)
+Biome: Sparse Jungle
+Day 0, 8.71 minutes until sunset
+Selected slot: 1
+Hotbar: [0: Oak Sapling x3]
+Looking at: Vines (cannot dig - too far away)
+====
+
+
+📊 pygame_actions: [{'type': 'move', 'x': 0.0, 'z': 387}]
+📊 mcp_actions: [{'tool': 'walk', 'parameters': {'duration': 774000}}]
+
+
+
+```
+
+
+browser output:
+```
+[WsCommandClient] Received command: {type: 'getBotStatus'}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'getScreenshot'}
+wsCommandClient.ts:577 [WsCommandClient] Capturing full page screenshot including UI elements
+wsCommandClient.ts:593 [WsCommandClient] Using html2canvas for complete page capture
+wsCommandClient.ts:596 [Violation] Avoid using document.write(). https://developers.google.com/web/updates/2016/08/removing-document-write
+push../node_modules/.pnpm/html2canvas@1.4.1/node_modules/html2canvas/dist/html2canvas.js.DocumentCloner.toIFrame @ html2canvas.js:5269
+(anonymous) @ html2canvas.js:7757
+step @ html2canvas.js:86
+(anonymous) @ html2canvas.js:67
+(anonymous) @ html2canvas.js:60
+__awaiter @ html2canvas.js:56
+renderElement @ html2canvas.js:7711
+html2canvas @ html2canvas.js:7706
+(anonymous) @ wsCommandClient.ts:596
+wsCommandClient.ts:590 [Violation] 'setTimeout' handler took 117ms
+wsCommandClient.ts:615 [WsCommandClient] Original screenshot size: 701x1294
+wsCommandClient.ts:622 [WsCommandClient] Screenshot resized to 1080px width successfully
+wsCommandClient.ts:642 [WsCommandClient] Screenshot captured successfully
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 2, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 10, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 10, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 26, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 14, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 16, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 34, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 18, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 18, movementY: -2}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 28, movementY: -2}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 12, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 18, movementY: -2}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 8, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 6, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 16, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 8, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 8, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 14, movementY: -2}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 8, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 12, movementY: -2}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 6, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 4, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'look', movementX: 4, movementY: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'getBotStatus'}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'getScreenshot'}
+wsCommandClient.ts:577 [WsCommandClient] Capturing full page screenshot including UI elements
+wsCommandClient.ts:593 [WsCommandClient] Using html2canvas for complete page capture
+wsCommandClient.ts:596 [Violation] Avoid using document.write(). https://developers.google.com/web/updates/2016/08/removing-document-write
+push../node_modules/.pnpm/html2canvas@1.4.1/node_modules/html2canvas/dist/html2canvas.js.DocumentCloner.toIFrame @ html2canvas.js:5269
+(anonymous) @ html2canvas.js:7757
+step @ html2canvas.js:86
+(anonymous) @ html2canvas.js:67
+(anonymous) @ html2canvas.js:60
+__awaiter @ html2canvas.js:56
+renderElement @ html2canvas.js:7711
+html2canvas @ html2canvas.js:7706
+(anonymous) @ wsCommandClient.ts:596
+wsCommandClient.ts:590 [Violation] 'setTimeout' handler took 90ms
+wsCommandClient.ts:615 [WsCommandClient] Original screenshot size: 701x1294
+wsCommandClient.ts:622 [WsCommandClient] Screenshot resized to 1080px width successfully
+wsCommandClient.ts:642 [WsCommandClient] Screenshot captured successfully
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: -1}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'move', x: 0, z: 0}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'getBotStatus'}
+wsCommandClient.ts:846 [WsCommandClient] Received command: {type: 'getScreenshot'}
+wsCommandClient.ts:577 [WsCommandClient] Capturing full page screenshot including UI elements
+wsCommandClient.ts:593 [WsCommandClient] Using html2canvas for complete page capture
+wsCommandClient.ts:596 [Violation] Avoid using document.write(). https://developers.google.com/web/updates/2016/08/removing-document-write
+push../node_modules/.pnpm/html2canvas@1.4.1/node_modules/html2canvas/dist/html2canvas.js.DocumentCloner.toIFrame @ html2canvas.js:5269
+(anonymous) @ html2canvas.js:7757
+step @ html2canvas.js:86
+(anonymous) @ html2canvas.js:67
+(anonymous) @ html2canvas.js:60
+__awaiter @ html2canvas.js:56
+renderElement @ html2canvas.js:7711
+html2canvas @ html2canvas.js:7706
+(anonymous) @ wsCommandClient.ts:596
+wsCommandClient.ts:590 [Violation] 'setTimeout' handler took 90ms
+wsCommandClient.ts:615 [WsCommandClient] Original screenshot size: 701x1294
+wsCommandClient.ts:622 [WsCommandClient] Screenshot resized to 1080px width successfully
+wsCommandClient.ts:642 [WsCommandClient] Screenshot captured successfully
+```

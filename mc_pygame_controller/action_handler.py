@@ -30,12 +30,8 @@ class ActionHandler:
             "camera_drag_state": lambda v: (
                 self.controller._handle_camera_drag_state(v[0]) if v else None
             ),
-            "left_click": lambda v: self.handle_left_click(
-                v, self._detect_inventory_mode()
-            ),
-            "right_click": lambda v: self.handle_right_click(
-                v, self._detect_inventory_mode()
-            ),
+            "left_click": lambda v: self.handle_left_click(v),
+            "right_click": lambda v: self.handle_right_click(v),
             "left_click_keyboard": self._handle_left_click_keyboard,
             "right_click_keyboard": self._handle_right_click_keyboard,
             "jump": self._handle_jump_action,  # This is a helper that calls self.handle_jump
@@ -58,8 +54,8 @@ class ActionHandler:
         }
 
     def _detect_inventory_mode(self) -> bool:
-        """Detect if we should use inventory mode for clicks based on current context."""
-        return self.state.inventory_open or self.state.current_context == "inventory"
+        """DEPRECATED: Context detection now handled automatically by web client."""
+        return False  # Always return False since web client handles context
 
     def _detect_current_context(self) -> str:
         """
@@ -122,8 +118,7 @@ class ActionHandler:
 
         # Combine keyboard and button states (OR logic)
         combined_state = keyboard_state or button_state
-        inventory_mode = self._detect_inventory_mode()
-        self.handle_left_click(combined_state, inventory_mode)
+        self.handle_left_click(combined_state)
 
     def _handle_right_click_keyboard(self, keyboard_state: bool):
         """Handle right click keyboard input, combining with button state."""
@@ -133,8 +128,7 @@ class ActionHandler:
 
         # Combine keyboard and button states (OR logic)
         combined_state = keyboard_state or button_state
-        inventory_mode = self._detect_inventory_mode()
-        self.handle_right_click(combined_state, inventory_mode)
+        self.handle_right_click(combined_state)
 
     def _calculate_duration(self, start_time: Optional[float]) -> str:
         """Calculate duration string from start time - updated with more options"""
@@ -245,89 +239,37 @@ class ActionHandler:
 
     def handle_left_click(self, pressed: bool, inventory_mode: bool = False):
         """
-        Handle left click using context-sensitive commands.
+        Handle left click using simplified commands (context detection automatic in web client).
 
         Args:
             pressed: Whether the button is currently pressed
-            inventory_mode: Whether to use inventory interaction mode
-                          - True: Uses documentMouseEvent (for UI/inventory interactions)
-                          - False: Uses standard leftDown/leftUp (for game world interactions)
-
-        The inventory_mode is automatically detected based on:
-        - Current inventory state (self.state.inventory_open)
-        - Current interaction context (self.state.current_context)
+            inventory_mode: Ignored - web client handles context detection automatically
         """
-        if not inventory_mode:
-            # Inventory mode: Use documentMouseEvent for UI interactions
-            self._handle_timed_action(
-                "left_click",
-                pressed,
-                {
-                    "type": "documentMouseEvent",
-                    "button": 0,
-                    "action": "down",
-                    "updateMouse": True,
-                },
-                {
-                    "type": "documentMouseEvent",
-                    "button": 0,
-                    "action": "up",
-                    "updateMouse": False,
-                },
-                "leftClick",
-            )
-        else:
-            # World mode: Use standard game click commands
-            self._handle_timed_action(
-                "left_click",
-                pressed,
-                {"type": "leftDown"},
-                {"type": "leftUp"},
-                "leftClick",
-            )
+        # Simple approach: always use leftDown/leftUp, let web client handle context
+        self._handle_timed_action(
+            "left_click",
+            pressed,
+            {"type": "leftDown"},
+            {"type": "leftUp"},
+            "leftClick",
+        )
 
     def handle_right_click(self, pressed: bool, inventory_mode: bool = False):
         """
-        Handle right click using context-sensitive commands.
+        Handle right click using simplified commands (context detection automatic in web client).
 
         Args:
             pressed: Whether the button is currently pressed
-            inventory_mode: Whether to use inventory interaction mode
-                          - True: Uses documentMouseEvent (for UI/inventory interactions)
-                          - False: Uses standard rightDown/rightUp (for game world interactions)
-
-        The inventory_mode is automatically detected based on:
-        - Current inventory state (self.state.inventory_open)
-        - Current interaction context (self.state.current_context)
+            inventory_mode: Ignored - web client handles context detection automatically
         """
-        if not inventory_mode:
-            # Inventory mode: Use documentMouseEvent for UI interactions
-            self._handle_timed_action(
-                "right_click",
-                pressed,
-                {
-                    "type": "documentMouseEvent",
-                    "button": 2,
-                    "action": "down",
-                    "updateMouse": True,
-                },
-                {
-                    "type": "documentMouseEvent",
-                    "button": 2,
-                    "action": "up",
-                    "updateMouse": False,
-                },
-                "rightClick",
-            )
-        else:
-            # World mode: Use standard game click commands
-            self._handle_timed_action(
-                "right_click",
-                pressed,
-                {"type": "rightDown"},
-                {"type": "rightUp"},
-                "rightClick",
-            )
+        # Simple approach: always use rightDown/rightUp, let web client handle context
+        self._handle_timed_action(
+            "right_click",
+            pressed,
+            {"type": "rightDown"},
+            {"type": "rightUp"},
+            "rightClick",
+        )
 
     def handle_jump(self, pressed: bool):
         """Handle jump using the generic timed action handler"""
