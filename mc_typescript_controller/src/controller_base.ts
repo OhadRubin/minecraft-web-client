@@ -12,11 +12,11 @@ import { LookPathTracker } from './look_path';
 import { ModeStrategy, PygameModeStrategy, MCPModeStrategy } from './mode_strategy';
 import { ActionHandler } from './action_handler';
 import { convert_to_mcp_format } from './action_converter';
+import { MCPClient } from '../../mcp-client/src/MCPClient.js';
 // Constants like WINDOW_WIDTH, FPS are not directly used in this base controller logic without Pygame.
 // import { WINDOW_WIDTH, WINDOW_HEIGHT, FPS } from './constants';
 
 // Placeholder for mcp_client.Server until it's properly typed or imported
-type McpServerType = any;
 type ChainType = any; // Placeholder for chain type
 type McpExecutorType = any; // Placeholder for MCP Executor
 
@@ -30,7 +30,7 @@ export class MinecraftControllerBase {
     public look_path_tracker: LookPathTracker;
     public strategy: ModeStrategy;
     public action_handler: ActionHandler;
-    public mcp_server: McpServerType | null = null;
+    public mcp_server: MCPClient | null = null;
 
     // Omitted Pygame-specific properties: screen, clock, ui_manager
 
@@ -44,7 +44,7 @@ export class MinecraftControllerBase {
      */
     constructor(
         mode: string = "pygame",
-        chain_args: [McpServerType[], ChainType] | null = null,
+        chain_args: [MCPClient[], ChainType] | null = null,
         sensitivity: number = 5.0,
         enable_logging: boolean = false,
         data_collection_enabled: boolean = false
@@ -107,18 +107,12 @@ export class MinecraftControllerBase {
         }
     }
 
-    private _create_mcp_server_for_data_collection(): McpServerType | null {
-        // This method would need a TypeScript equivalent of Python's mcp_client.Server.
-        // For now, it's a placeholder.
-        console.log("🔧 Attempting to create MCP server for data collection (placeholder)...");
+    private _create_mcp_server_for_data_collection(): MCPClient | null {
+        console.log("🔧 Attempting to create MCP server for data collection...");
         try {
-            // const Server = require('some-mcp-client-library').Server; // Example
-            // const server_config = { /* ... */ };
-            // const server = new Server("minecraft-data-collection", server_config);
-            // console.log("🔧 Created MCP server for data collection");
-            // return server;
-            console.warn("⚠️ _create_mcp_server_for_data_collection is not fully implemented in TypeScript yet.");
-            return null;
+            const server = new MCPClient({ name: "MinecraftController", version: "1.0.0" });
+            console.log("🔧 Created MCP server for data collection");
+            return server;
         } catch (e: any) {
             console.error(`⚠️ Could not create MCP server for data collection: ${e.message}`);
             console.log("💡 Data collection will be disabled");
@@ -402,22 +396,45 @@ export class MinecraftControllerBase {
         console.log(`Starting Minecraft Controller in ${this.state.mode.toUpperCase()} mode...`);
         await this.strategy.connect(); // Connects WebSocket if in Pygame mode
 
+        if (this.state.data_collection_enabled && this.mcp_server) {
+            console.log("🚀 Connecting MCP Server for data collection...");
+            try {
+                await this.mcp_server.connect({
+                    type: 'stdio',
+                    command: 'npx',
+                    args: ['tsx', 'minecraft-mcp-server.ts'],
+                    cwd: '../minecraft-mcp-server', // Adjust if your project structure is different
+                    env: { ...process.env }
+                });
+                console.log("✅ MCP Server connected successfully for data collection.");
+                // If in Pygame mode and data collection is on, test getBotStatus
+                if (this.strategy instanceof PygameModeStrategy) {
+                    await this.test_get_bot_status_pygame_startup();
+                }
+            } catch (e: any) {
+                console.error(`❌ MCP Server connection failed: ${e.message}`);
+                console.log("💡 Data collection features via MCP server will be unavailable.");
+                // Optionally, set this.state.data_collection_enabled = false if MCP is critical for it
+            }
+        }
+
+
         if (this.state.data_collection_enabled && this.strategy instanceof PygameModeStrategy) {
             // In Python, this started a background init. Here, async init is part of strategy.
             console.log("🔧 Data collection: PygameModeStrategy will handle its async init if needed.");
             // The PygameModeStrategy's connect or a dedicated method might handle async setup.
-             if (this.mcp_server && typeof (this.mcp_server as any).initialize === 'function') {
-                console.log("🔧 Initializing MCP server in main async context (like MCP mode)...");
-                try {
-                    await (this.mcp_server as any).initialize();
-                    console.log("✅ MCP server initialized successfully");
-                    await this.test_get_bot_status_pygame_startup();
-                } catch (e: any) {
-                    console.error(`❌ MCP server initialization failed: ${e.message}`);
-                    console.log("💡 Data collection will be disabled for this session");
-                    this.state.data_collection_enabled = false;
-                }
-            }
+            // if (this.mcp_server && typeof (this.mcp_server as any).initialize === 'function') { // initialize is part of connect now
+            //     console.log("🔧 Initializing MCP server in main async context (like MCP mode)...");
+            //     try {
+            //         // await (this.mcp_server as any).initialize(); // Covered by connect
+            //         console.log("✅ MCP server initialized successfully");
+            //         await this.test_get_bot_status_pygame_startup();
+            //     } catch (e: any) {
+            //         console.error(`❌ MCP server initialization failed: ${e.message}`);
+            //         console.log("💡 Data collection will be disabled for this session");
+            //         this.state.data_collection_enabled = false;
+            //     }
+            // }
             await this.strategy.start_async_execution?.(); // Call if exists
         }
 
@@ -467,10 +484,11 @@ export class MinecraftControllerBase {
      */
     public async test_get_bot_status_pygame_startup(): Promise<void> {
         if (!this.mcp_server || !this.state.data_collection_enabled) return;
+        console.log("🧪 Testing getBotStatus at startup (pygame data collection mode)...");
         try {
-            console.log("🧪 Testing getBotStatus at startup (pygame data collection mode)...");
-            // Assuming mcp_server has an execute_tool method
-            const result = await (this.mcp_server as any).execute_tool("getBotStatus", {});
+            // Ensure mcp_server is treated as MCPClient
+            const mcpClient = this.mcp_server as MCPClient;
+            const result = await mcpClient.callTool({ name: "getBotStatus", arguments: {} });
             const text = result?.content?.[0]?.text || "No text content from getBotStatus";
             console.log(`📊 Pygame startup getBotStatus result: \n====\n${text}\n====\n`);
         } catch (e: any) {
