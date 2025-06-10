@@ -8,10 +8,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { ActionConverter, convert_to_mcp_format } from './action_converter'; // Assuming action_converter.ts is in the same directory
 import type { ControllerState } from './controller_state'; // Assuming controller_state.ts
+import { MCPClient } from '../../mcp-client/src/MCPClient.js'; // Adjusted path
 
 // Placeholders for types that will be defined elsewhere or imported from libraries
 type MinecraftControllerBase = any; // Placeholder for the main controller class
-type Server = any; // Placeholder for MCP Server type
+// type Server = any; // Placeholder for MCP Server type - Replaced by MCPClient
 type PygameMCPAsyncMessageChain = any; // Placeholder
 type McpAction = { tool: string; parameters: Record<string, any> }; // From action_converter.ts
 
@@ -126,7 +127,7 @@ export class PygameModeStrategy extends ModeStrategy {
     private trajectories_dir: string;
     private current_dir: string;
     private images_dir: string;
-    private mcp_server: Server | null;
+    private mcp_server: MCPClient | null;
     private data_collection_enabled: boolean;
     private _mcp_action_queue: McpAction[] = []; // For compatibility/logging
     private _active_tasks: Set<Promise<any>> = new Set(); // For tracking async getBotStatus tasks
@@ -134,7 +135,7 @@ export class PygameModeStrategy extends ModeStrategy {
     private movement_accumulator: { total_distance: number; last_pos: [number, number] } | null = null;
 
 
-    constructor(controller: MinecraftControllerBase, mcp_server: Server | null = null, data_collection_enabled: boolean = false) {
+    constructor(controller: MinecraftControllerBase, mcp_server: MCPClient | null = null, data_collection_enabled: boolean = false) {
         super(controller);
 
         this.trajectories_dir = "trajectories";
@@ -322,9 +323,13 @@ export class PygameModeStrategy extends ModeStrategy {
     }
 
     private async _always_execute_getbotstatus(pygame_actions: any[], mcp_actions: McpAction[], task_context: string): Promise<void> {
+        if (!this.mcp_server) {
+            console.error("❌ MCP Server is not available for getBotStatus.");
+            return;
+        }
         try {
             // Assuming this.mcp_server.execute_tool returns a promise
-            const real_response = await this.mcp_server.execute_tool("getBotStatus", {});
+            const real_response = await (this.mcp_server as MCPClient).callTool({ name: "getBotStatus", arguments: {} });
 
             // Ensure real_response and its content are valid before accessing
             if (!real_response || !real_response.content || real_response.content.length < 2) {
