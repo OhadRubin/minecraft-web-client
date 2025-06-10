@@ -99,9 +99,6 @@ export class TouchEvaluator {
       case 'gamepadConnect':
         await this.gamepadHandler.handleGamepadConnect(cmd)
         break
-      case 'gamepadDisconnect':
-        await this.gamepadHandler.handleGamepadDisconnect(cmd)
-        break
       case 'gamepadButtonPressDown':
         await this.gamepadHandler.handleGamepadButtonPressDown(cmd)
         break
@@ -116,15 +113,6 @@ export class TouchEvaluator {
         break
       case 'gamepadJoystickCenter':
         await this.gamepadHandler.handleGamepadJoystickCenter(cmd)
-        break
-      case 'gamepadJoystickPulse':
-        await this.gamepadHandler.handleGamepadJoystickPulse(cmd)
-        break
-      case 'gamepadJoystickAnimate':
-        await this.gamepadHandler.handleGamepadJoystickAnimate(cmd)
-        break
-      case 'gamepadJoystickCircular':
-        await this.gamepadHandler.handleGamepadJoystickCircular(cmd)
         break
     }
   }
