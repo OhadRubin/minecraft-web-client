@@ -26,7 +26,6 @@ export class VisualCommandHandler {
         marker.add(sprite)
       }
       scene.add(marker)
-      console.log(`[WsCommandClient] Added marker ${id} at (${cmd.worldX}, ${cmd.worldY}, ${cmd.worldZ})`)
     } catch (error) {
       console.error('[WsCommandClient] Error handling annotate_3d_position:', error)
     }
@@ -34,7 +33,6 @@ export class VisualCommandHandler {
 
   async handleGetScreenshot(cmd: MouseCommand) {
     try {
-      console.log('[WsCommandClient] Capturing full page screenshot including UI elements')
 
       // Wait for the next frame to ensure rendering is complete
       await new Promise(resolve => requestAnimationFrame(resolve))
@@ -50,7 +48,6 @@ export class VisualCommandHandler {
           // Use a small delay to ensure the frame is fully rendered
           setTimeout(async () => {
             try {
-              console.log('[WsCommandClient] Using html2canvas for complete page capture')
 
               // Use html2canvas to capture the entire page including all UI elements
               const canvas = await html2canvas(document.body, {
@@ -72,18 +69,15 @@ export class VisualCommandHandler {
               const base64Data = dataUrl.split(',')[1]
 
               // Resize the image to 1080 pixels width while maintaining aspect ratio
-              console.log(`[WsCommandClient] Original screenshot size: ${canvas.width}x${canvas.height}`)
 
               try {
                 // Resize the captured image to 1080 width
                 const resizedDataUrl = await resizeImageBase64(dataUrl, 1080)
                 const resizedBase64Data = resizedDataUrl.split(',')[1]
 
-                console.log(`[WsCommandClient] Screenshot resized to 1080px width successfully`)
                 resolve(resizedBase64Data)
               } catch (resizeError) {
                 console.warn('[WsCommandClient] Failed to resize screenshot, using original:', resizeError)
-                console.log(`[WsCommandClient] Full page screenshot captured successfully: ${canvas.width}x${canvas.height}`)
                 resolve(base64Data)
               }
             } catch (error) {
@@ -99,7 +93,6 @@ export class VisualCommandHandler {
       // Race between capture and timeout
       const base64Data = await Promise.race([capturePromise, timeoutPromise])
 
-      console.log('[WsCommandClient] Screenshot captured successfully')
       const status = this.collectBotStatus()
       const readableStatus = this.prettyPrintBotStatus(status)
       if (this.ws) {

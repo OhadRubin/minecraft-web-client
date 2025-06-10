@@ -10,7 +10,6 @@ export function setupWsCommandClient(bot: any) {
   const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
   const wsUrl = `${protocol}://${location.hostname}:${wsPort}`
 
-  console.log(`[WsCommandClient] Connecting to WebSocket server at: ${wsUrl}`)
 
   const ws = new WebSocket(wsUrl)
 
@@ -20,14 +19,12 @@ export function setupWsCommandClient(bot: any) {
   worker.start()
 
   ws.addEventListener('open', () => {
-    console.log(`[WsCommandClient] Connected to WebSocket server, registering as bot client`)
     ws.send(JSON.stringify({ init: 'bot' }))
   })
 
   ws.addEventListener('message', ev => {
     try {
       const cmd = JSON.parse(ev.data as string) as MouseCommand
-      console.log(`[WsCommandClient] Received command:`, cmd)
       worker.enqueue(cmd)
     } catch (err) {
       console.error('[WsCommandClient] Invalid command', err)
@@ -35,7 +32,6 @@ export function setupWsCommandClient(bot: any) {
   })
 
   ws.addEventListener('close', (event) => {
-    console.log(`[WsCommandClient] WebSocket connection closed:`, event.code, event.reason)
   })
 
   ws.addEventListener('error', (error) => {
