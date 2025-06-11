@@ -170,6 +170,9 @@ export class GamepadController {
   // Track button press start times for duration calculation
   private buttonPressStartTimes: Map<number, number> = new Map();
   
+  // Track joysticks currently being dragged via visual interface (to prevent gamepad override)
+  private visuallyDraggedJoysticks: Set<number> = new Set();
+  
   // Button mapping (Xbox controller standard)
   private readonly buttonMapping: ButtonMapping = {
     0: 0, // A button
@@ -390,6 +393,7 @@ export class GamepadController {
       if (joystick.containsPoint(pos.x, pos.y)) {
         joystick.dragging = true;
         this.state.draggingJoystick = joystick;
+        this.visuallyDraggedJoysticks.add(joystick.stickId);
         joystick.updatePosition(pos.x, pos.y);
         await this.wsManager.sendCommand({
           type: "gamepadJoystickMove",
@@ -447,18 +451,15 @@ export class GamepadController {
     // Stop dragging joysticks and center them
     if (this.state.draggingJoystick) {
       this.state.draggingJoystick.dragging = false;
+      this.visuallyDraggedJoysticks.delete(this.state.draggingJoystick.stickId);
       this.state.draggingJoystick.resetPosition();
       
+      // Send 0,0 position to center (consistent with physical gamepad behavior)
       await this.wsManager.sendCommand({
         type: "gamepadJoystickMove",
         stickIndex: this.state.draggingJoystick.stickId,
         x: 0,
         y: 0
-      });
-      
-      await this.wsManager.sendCommand({
-        type: "gamepadJoystickCenter",
-        stickIndex: this.state.draggingJoystick.stickId
       });
       
       this.state.draggingJoystick = null;
@@ -627,7 +628,7 @@ export class GamepadController {
         const leftX = this.applyDeadzone(gamepad.axes[0]);
         const leftY = this.applyDeadzone(gamepad.axes[1]);
 
-        if (this.state.joysticks[0]) {
+        if (this.state.joysticks[0] && !this.visuallyDraggedJoysticks.has(0)) {
           const joystick = this.state.joysticks[0];
           const prevX = joystick.xPos;
           const prevY = joystick.yPos;
@@ -651,7 +652,7 @@ export class GamepadController {
         const rightX = this.applyDeadzone(gamepad.axes[2]);
         const rightY = this.applyDeadzone(gamepad.axes[3]);
 
-        if (this.state.joysticks[1]) {
+        if (this.state.joysticks[1] && !this.visuallyDraggedJoysticks.has(1)) {
           const joystick = this.state.joysticks[1];
           const prevX = joystick.xPos;
           const prevY = joystick.yPos;
@@ -786,6 +787,9 @@ export class GamepadController {
     // Clear button press timers
     this.buttonPressStartTimes.clear();
     
+    // Clear visual joystick state
+    this.visuallyDraggedJoysticks.clear();
+    
     // Disconnect WebSocket
     this.wsManager.disconnect();
   }
@@ -803,6 +807,9 @@ export class GamepadController {
     
     // Clear button press timers
     this.buttonPressStartTimes.clear();
+    
+    // Clear visual joystick state
+    this.visuallyDraggedJoysticks.clear();
     
     // Remove event listeners
     this.canvas.removeEventListener('mousedown', this.handleMouseDown.bind(this));

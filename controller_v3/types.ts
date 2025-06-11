@@ -444,6 +444,27 @@ export interface WebSocketStatus {
 }
 
 // ========================================
+// Movement Tracking Types
+// ========================================
+
+export interface JoystickSession {
+    stickIndex: number;
+    startTime: number;
+    lastUpdateTime: number;
+    totalX: number;
+    totalY: number;
+    movementCount: number;
+}
+
+export interface MovementReport {
+    stickIndex: number;
+    sessionDuration: number;
+    totalX: number;
+    totalY: number;
+    movementCount: number;
+}
+
+// ========================================
 // Class Interface Types  
 // ========================================
 

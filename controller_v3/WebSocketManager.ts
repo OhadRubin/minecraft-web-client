@@ -1,4 +1,4 @@
-import { WebSocketCommand, WebSocketStatus, ConnectionStatus } from './types.js';
+import { WebSocketCommand, WebSocketStatus, ConnectionStatus, JoystickSession, MovementReport } from './types.js';
 
 export interface WebSocketManagerOptions {
     url: string;
@@ -15,6 +15,11 @@ export class WebSocketManager {
     private reconnectAttempts: number = 0;
     private maxReconnectAttempts: number = 5;
     private reconnectDelay: number = 1000;
+
+    // Movement accumulation tracking
+    private movementSessions: Map<number, JoystickSession> = new Map();
+    private reportTimer: number | null = null;
+    private reportInterval: number = 2000; // Report every 2 seconds
 
     // Callbacks
     private onStatusChange?: (status: WebSocketStatus) => void;
@@ -139,16 +144,133 @@ export class WebSocketManager {
         // Log to server console
         this.logToServer(`📤 sendCommand called with: ${JSON.stringify(command)}`);
         
-        // Only log non-button commands to avoid spam (button durations are logged separately)
-        if (command.type !== "gamepadButtonPressDown" && command.type !== "gamepadButtonPressUp") {
+        // Handle joystick movement tracking
+        if (command.type === "gamepadJoystickMove") {
+            this.trackJoystickMovement(command.stickIndex, command.x, command.y);
+        }
+        
+        // Only log non-joystick and non-button commands to avoid spam
+        if (command.type !== "gamepadJoystickMove" && 
+            command.type !== "gamepadButtonPressDown" && 
+            command.type !== "gamepadButtonPressUp") {
             this.logToTerminal(command);
         }
         
         await this.send(command);
     }
 
+    private trackJoystickMovement(stickIndex: number, x: number, y: number): void {
+        const now = Date.now();
+        
+        if (!this.movementSessions.has(stickIndex)) {
+            // Start new session
+            this.movementSessions.set(stickIndex, {
+                stickIndex,
+                startTime: now,
+                lastUpdateTime: now,
+                totalX: x,
+                totalY: y,
+                movementCount: 1
+            });
+            
+            // Start reporting timer if not already running
+            if (!this.reportTimer) {
+                this.startReportTimer();
+            }
+        } else {
+            // Update existing session - just sum the x and y values
+            const session = this.movementSessions.get(stickIndex)!;
+            session.totalX += x;
+            session.totalY += y;
+            session.movementCount++;
+            session.lastUpdateTime = now;
+        }
+        
+        // Check if joystick returned to center (end session)
+        if (Math.abs(x) < 0.01 && Math.abs(y) < 0.01) {
+            this.endJoystickSession(stickIndex);
+        }
+    }
+
+    private endJoystickSession(stickIndex: number): void {
+        const session = this.movementSessions.get(stickIndex);
+        if (!session) return;
+        
+        // Generate and log report
+        const report = this.generateMovementReport(session);
+        this.logMovementReport(report);
+        
+        // Remove session
+        this.movementSessions.delete(stickIndex);
+        
+        // Stop timer if no active sessions
+        if (this.movementSessions.size === 0 && this.reportTimer) {
+            clearInterval(this.reportTimer);
+            this.reportTimer = null;
+        }
+    }
+
+    private startReportTimer(): void {
+        this.reportTimer = window.setInterval(() => {
+            // Generate periodic reports for active sessions
+            this.movementSessions.forEach(session => {
+                const timeSinceLastUpdate = Date.now() - session.lastUpdateTime;
+                // Only report if session has been inactive for a while
+                if (timeSinceLastUpdate > 1000) {
+                    this.endJoystickSession(session.stickIndex);
+                }
+            });
+        }, this.reportInterval);
+    }
+
+    private generateMovementReport(session: JoystickSession): MovementReport {
+        const sessionDuration = session.lastUpdateTime - session.startTime;
+        
+        return {
+            stickIndex: session.stickIndex,
+            sessionDuration,
+            totalX: session.totalX,
+            totalY: session.totalY,
+            movementCount: session.movementCount
+        };
+    }
+
+    private logMovementReport(report: MovementReport): void {
+        const stickName = report.stickIndex === 0 ? "Left" : "Right";
+        const duration = (report.sessionDuration / 1000).toFixed(1);
+        
+        const reportText = [
+            `🎮 ${stickName} Stick Movement Report:`,
+            `   Duration: ${duration}s`,
+            `   Movements: ${report.movementCount}`,
+            `   Total X: ${report.totalX.toFixed(3)}`,
+            `   Total Y: ${report.totalY.toFixed(3)}`,
+            `${'═'.repeat(50)}`
+        ].join('\n');
+        
+        // Log to terminal
+        const terminal = (window as any).gamepadTerminal;
+        if (terminal) {
+            const timestamp = new Date().toLocaleTimeString();
+            terminal.writeln(`[${timestamp}] ${reportText}`);
+        }
+    }
+
     public disconnect(): void {
         console.log("🔌 Disconnecting WebSocket...");
+        
+        // Clear movement tracking
+        if (this.reportTimer) {
+            clearInterval(this.reportTimer);
+            this.reportTimer = null;
+        }
+        
+        // Generate final reports for any active sessions
+        this.movementSessions.forEach(session => {
+            const report = this.generateMovementReport(session);
+            this.logMovementReport(report);
+        });
+        this.movementSessions.clear();
         
         // Clear reconnect timer
         if (this.reconnectTimer) {

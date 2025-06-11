@@ -10,6 +10,7 @@ A TypeScript-based gamepad controller interface for the Minecraft web client. Th
 - Trigger button continuous press support
 - Configurable deadzone and trigger settings
 - Real-time status display
+- **Movement accumulation and reporting** - Tracks joystick movements and displays summary reports instead of individual commands
 
 ## Setup
 
@@ -62,3 +63,26 @@ The controller sends the following command types:
 - `gamepadJoystickMove` - Joystick position update
 - `gamepadJoystickCenter` - Joystick centering
 - `gamepadDestroy` - Cleanup on disconnect
+
+## Movement Reporting
+
+Instead of logging every individual `gamepadJoystickMove` command, the controller now accumulates movement data and generates summary reports when joystick sessions end. Reports include:
+
+- Session duration
+- Total number of movements
+- Total distance traveled
+- Maximum distance from center
+- Final position
+- Movement direction analysis
+
+Example report:
+```
+🎮 Right Stick Movement Report:
+   Duration: 1.2s
+   Movements: 13
+   Total Distance: 4.567
+   Max Distance: 1.000
+   Final Position: (0.000, 0.000)
+   Summary: Up (13 moves, 4.57 total distance)
+══════════════════════════════════════════════════
+```
