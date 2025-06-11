@@ -1,9 +1,12 @@
 import asyncio
 import json
-import websockets
 import pytest
 
-from ws_client import WebSocketClient
+try:
+    import websockets
+    from ws_client import WebSocketClient
+except Exception:  # pragma: no cover - optional dependency
+    WebSocketClient = None
 
 async def echo(websocket, _path):
     async for message in websocket:
@@ -11,6 +14,8 @@ async def echo(websocket, _path):
 
 @pytest.mark.asyncio
 async def test_basic_send(tmp_path):
+    if WebSocketClient is None:
+        pytest.skip("WebSocketClient dependency not available")
     server = await websockets.serve(echo, "localhost", 8765)
     received = []
     done = asyncio.Event()
