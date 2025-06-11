@@ -59,13 +59,13 @@ interface UIAction {
 type ModeStrategy = MCPModeStrategy | PygameModeStrategy;
 
 class MinecraftController {
-    private state: ControllerState;
+    state: ControllerState;
     private surface: Surface;
     private input: InputManager;
     private look_path_tracker: LookPathTracker;
     private strategy: ModeStrategy;
-    private ui_manager: UIManager;
-    private action_handler: ActionHandler;
+    ui_manager: UIManager;
+    action_handler: ActionHandler;
 
     constructor(options: ControllerOptions = {}) {
         this.state = new ControllerState(options);
@@ -122,14 +122,24 @@ class MinecraftController {
         }
 
         this.ui_manager = new UIManager(this.surface, this.state, this.look_path_tracker);
-        this.action_handler = new ActionHandler(this.state, this.strategy, this);
+        
+        // Create controller methods object for ActionHandler
+        const controllerMethods = {
+            _handle_camera_drag_state: (value: any) => this._handle_camera_drag_state(value),
+            send_command_sync: (command: any) => this.send_command_sync(command)
+        };
+        
+        this.action_handler = new ActionHandler(this.state, this.strategy, controllerMethods);
         
         if (this.state.data_collection_enabled) {
             console.log("🎬 Data collection enabled! Hotkeys: F5=Start session (mock)");
             const downloadBtn = document.getElementById('download-log-btn') as HTMLButtonElement;
             if (downloadBtn) {
                 downloadBtn.onclick = () => {
-                    BrowserFileHandler.downloadLog(this.strategy.traceLog.join('\n'), 'trace.txt');
+                    // Type guard to access traceLog property on PygameModeStrategy
+                    if (this.strategy instanceof PygameModeStrategy && 'traceLog' in this.strategy) {
+                        BrowserFileHandler.downloadLog(this.strategy.traceLog.join('\n'), 'trace.txt');
+                    }
                 };
             }
         }
@@ -138,7 +148,7 @@ class MinecraftController {
     private _create_mcp_server_for_data_collection(): MockMCPServer {
         console.log("🔧 Creating MOCK MCP server for data collection in browser.");
         return {
-            execute_tool: async (toolName: string, params: Record<string, any>): Promise<MCPResponse> => {
+            execute_tool: async (toolName: string, _params: Record<string, any>): Promise<MCPResponse> => {
                 console.log(`MOCK MCP SERVER: execute_tool(${toolName}) called`);
                 if (toolName === "getBotStatus") {
                     await new Promise(resolve => setTimeout(resolve, 200)); // Simulate network latency
@@ -155,7 +165,8 @@ class MinecraftController {
         };
     }
 
-    private _handle_camera_drag_state(mouse_pressed: boolean): void {
+    _handle_camera_drag_state(value: any): void {
+        const mouse_pressed = Boolean(value);
         const camera_is_clicking = this.ui_manager.camera_area.is_touching && mouse_pressed;
         const prev_clicking = this.state.camera_was_clicking;
 
@@ -179,25 +190,25 @@ class MinecraftController {
         
         this.state.websocket = new WebSocket(uri);
 
-        this.state.websocket.onopen = (event: Event) => {
+        this.state.websocket.onopen = (_event: Event) => {
             console.log("Connected to Minecraft Web Client!");
             this.state.connected = true;
             const init_message: WebSocketCommand = { init: this.state.mode };
             this.state.websocket!.send(JSON.stringify(init_message));
         };
         
-        this.state.websocket.onclose = (event: CloseEvent) => {
+        this.state.websocket.onclose = (_event: CloseEvent) => {
             console.log("Disconnected from Minecraft Web Client.");
             this.state.connected = false;
         };
 
-        this.state.websocket.onerror = (event: Event) => {
-            console.error("WebSocket error:", event);
+        this.state.websocket.onerror = (_event: Event) => {
+            console.error("WebSocket error occurred");
             this.state.connected = false;
         };
     }
 
-    send_command_sync(command: WebSocketCommand): void {
+    send_command_sync(command: WebSocketCommand | { type: string; [key: string]: any }): void {
         if (this.state.websocket && this.state.connected) {
             try {
                 this.state.websocket.send(JSON.stringify(command));
@@ -214,29 +225,43 @@ class MinecraftController {
     }
     
     private _execute_pygame_mcp_action(mcp_command: MCPCommand): void {
-        if (!this.strategy._queue_parallel_mcp_execution) return;
-        const action: UIAction = { type: mcp_command.tool, ...mcp_command.parameters };
-        this.strategy._queue_parallel_mcp_execution(
-            [action], `Camera drag: ${mcp_command.tool}`
-        );
+        // Type guard to ensure we have a PygameModeStrategy with the method
+        if (this.strategy instanceof PygameModeStrategy && 
+            '_queue_parallel_mcp_execution' in this.strategy && 
+            typeof this.strategy._queue_parallel_mcp_execution === 'function') {
+            const websocket_command = { type: mcp_command.tool, ...mcp_command.parameters };
+            this.strategy._queue_parallel_mcp_execution(
+                [websocket_command], `Camera drag: ${mcp_command.tool}`
+            );
+        }
     }
     
-    private _process_frame(timestamp: number): void {
+    private _process_frame(_timestamp: number): void {
         const events: Event[] = []; // Can be populated if specific event objects are needed
         
-        const mouse_pos: MousePosition = this.input.getMousePos();
+        const mouse_pos_array = this.input.getMousePos();
+        const mouse_pos: [number, number] = [mouse_pos_array[0], mouse_pos_array[1]];
         const mouse_pressed: boolean = this.input.getMousePressed()[0];
         const keys_pressed: Record<string, boolean> = this.input.getPressed();
 
-        const event_actions: UIAction[] = this.ui_manager.process_events(events);
-        const ui_actions: UIAction[] = this.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed);
-        const keyboard_actions: UIAction[] = this.ui_manager.process_keyboard_shortcuts(keys_pressed);
+        const event_actions = this.ui_manager.process_events(events);
+        const ui_actions = this.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed);
+        const keyboard_actions = this.ui_manager.process_keyboard_shortcuts(keys_pressed);
         
         this.action_handler.process_actions(
             [...event_actions, ...ui_actions, ...keyboard_actions]
         );
         
-        this.strategy.process_continuous_state(mouse_pos, mouse_pressed, keys_pressed);
+        // Convert Record<string, boolean> to Set<string> for keys that are pressed
+        const keys_pressed_set = new Set<string>();
+        for (const [key, pressed] of Object.entries(keys_pressed)) {
+            if (pressed) {
+                keys_pressed_set.add(key);
+            }
+        }
+        
+        const mouse_position: MousePosition = { x: mouse_pos[0], y: mouse_pos[1] };
+        this.strategy.process_continuous_state(mouse_position, mouse_pressed, keys_pressed_set);
         
         this.action_handler.process_edge_detections(keys_pressed);
         

@@ -29,7 +29,7 @@ interface UIManager {
 }
 
 interface KeyboardMovement {
-    handle_keyboard: (keysPressed: Set<string>) => [number, number];
+    handle_keyboard: (keys: { [key: string]: boolean }) => [number, number];
 }
 
 interface MovementJoystick {
@@ -103,7 +103,7 @@ class MCPModeStrategy extends ModeStrategy {
     }
 
     handle_movement(x: number, z: number): void {
-        const mcp_command = ActionConverter._convert_move_action({x, z});
+        const mcp_command = ActionConverter._convert_move_action({type: 'move', x, z});
         if(mcp_command) this._execute(mcp_command);
     }
     
@@ -143,7 +143,7 @@ class PygameModeStrategy extends ModeStrategy {
     private was_moving: boolean = false;
     private data_collection_enabled: boolean;
     private mcp_server: MCPServer | null;
-    private traceLog: string[] = [];
+    public traceLog: string[] = [];
     private trajectory_id: string;
 
     constructor(controller: Controller, mcp_server: MCPServer | null, data_collection_enabled: boolean) {
@@ -225,7 +225,10 @@ class PygameModeStrategy extends ModeStrategy {
     }
     
     process_continuous_state(mouse_pos: MousePosition, mouse_pressed: boolean, keys_pressed: Set<string>): void {
-        const keyboard_move = this.controller.ui_manager.keyboard_movement.handle_keyboard(keys_pressed);
+        // Convert Set<string> to Record<string, boolean>
+        const keys_state: { [key: string]: boolean } = {};
+        keys_pressed.forEach(key => keys_state[key] = true);
+        const keyboard_move = this.controller.ui_manager.keyboard_movement.handle_keyboard(keys_state);
         const joystick = this.controller.ui_manager.movement_joystick;
         const joystick_move: [number, number] = [
             (joystick.knob_x - joystick.center_x) / joystick.radius,
@@ -259,7 +262,7 @@ class PygameModeStrategy extends ModeStrategy {
         }
     }
     
-    private _queue_parallel_mcp_execution(actions: WebSocketCommand[], task_context: string): void {
+    public _queue_parallel_mcp_execution(actions: WebSocketCommand[], task_context: string): void {
         if (!this.data_collection_enabled || !this.mcp_server) return;
 
         const mcp_actions = ActionConverter.pygame_to_mcp_simple(actions);

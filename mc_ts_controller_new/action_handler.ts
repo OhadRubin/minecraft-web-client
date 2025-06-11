@@ -1,49 +1,42 @@
 import { Keys } from "./porting.js";
+import { ControllerState as ImportedControllerState } from "./controller_state.js";
 
 // === START_OF: action_handler.py
 // =======================================================================
 
-// Type definitions
-interface ActionState {
-    active: boolean;
-    start_time: number | null;
-}
-
-interface ActionStates {
-    [key: string]: ActionState;
-}
-
-interface ControllerState {
-    action_states: ActionStates;
-    enable_logging: boolean;
-    last_key_states: { [key: string]: boolean };
-    last_movement: [number, number];
-    mode: string;
-    inventory_open: boolean;
-    last_hotbar_slot: number;
-    current_hotbar_slot: number;
-}
+// Use the ControllerState interface from controller_state.ts
+interface ControllerState extends ImportedControllerState {}
 
 interface ModeStrategy {
     handle_timed_action(
-        mcp_tool: string,
-        duration: DurationString,
-        pygame_down_cmd: PygameCommand,
-        pygame_up_cmd: PygameCommand,
-        kwargs?: Record<string, any>
+        action_name: string,
+        duration: number,
+        pygame_down_cmd: WebSocketCommand | null,
+        pygame_up_cmd: WebSocketCommand | null,
+        kwargs: Record<string, any>
     ): void;
-    handle_toggle_action(mcp_tool: string, toggled: boolean, pygame_control: string): void;
+    handle_toggle_action(action_name: string, state: boolean, pygame_control: string | null): void;
     handle_movement(movement_x: number, movement_z: number): void;
     handle_simple_action(
-        mcp_tool: string,
-        pygame_cmd: PygameCommand,
+        action_name: string,
+        pygame_cmd: WebSocketCommand | null,
         mcp_params?: Record<string, any>
     ): void;
+    connect(): void;
+    process_continuous_state(mouse_pos: { x: number; y: number }, mouse_pressed: boolean, keys_pressed: Set<string>): void;
+    // Optional properties that only PygameModeStrategy has
+    traceLog?: string[];
+    _queue_parallel_mcp_execution?: (actions: any[], task_context: string) => void;
 }
 
-interface Controller {
+interface WebSocketCommand {
+    type: string;
+    [key: string]: any;
+}
+
+interface ControllerMethods {
     _handle_camera_drag_state(value: any): void;
-    send_command_sync(command: PygameCommand): void;
+    send_command_sync(command: WebSocketCommand): void;
 }
 
 type DurationString = 
@@ -65,23 +58,17 @@ type ActionHandlers = { [key: string]: ActionHandlerFunction };
 type ActionEntry = [string, any];
 type Actions = ActionEntry[];
 
-interface KeyMap {
-    [key: string]: {
-        key: number;
-        handler: () => void;
-    };
-}
 
 type MCPParamsFunction = (duration: DurationString) => Record<string, any>;
 
 export class ActionHandler {
     private state: ControllerState;
     private strategy: ModeStrategy;
-    private controller: Controller;
+    private controller: ControllerMethods;
     private _last_jump_state: boolean;
     private _action_handlers: ActionHandlers;
 
-    constructor(controller_state: ControllerState, mode_strategy: ModeStrategy, controller: Controller) {
+    constructor(controller_state: ControllerState, mode_strategy: ModeStrategy, controller: ControllerMethods) {
         this.state = controller_state;
         this.strategy = mode_strategy;
         this.controller = controller;
@@ -122,6 +109,18 @@ export class ActionHandler {
         return "very_very_long";
     }
 
+    private _duration_string_to_ms(duration: DurationString): number {
+        switch (duration) {
+            case "very_short": return 100;
+            case "short": return 500;
+            case "medium": return 1000;
+            case "long": return 2500;
+            case "very_long": return 5000;
+            case "very_very_long": return 10000;
+            default: return 1000;
+        }
+    }
+
     private _handle_timed_action(
         action_name: string,
         pressed: boolean,
@@ -131,6 +130,9 @@ export class ActionHandler {
         mcp_params_func: MCPParamsFunction | null = null
     ): void {
         const state = this.state.action_states[action_name];
+        // Type guard to ensure state has start_time property
+        if (!('start_time' in state)) return;
+        
         if (pressed && !state.active) {
             if (this.state.enable_logging) console.log(`${action_name.toUpperCase()} DOWN`);
             state.start_time = Date.now();
@@ -141,7 +143,9 @@ export class ActionHandler {
             state.start_time = null;
 
             const kwargs = mcp_params_func ? mcp_params_func(duration) : {};
-            this.strategy.handle_timed_action(mcp_tool, duration, pygame_down_cmd, pygame_up_cmd, kwargs);
+            // Convert DurationString to milliseconds for the strategy
+            const duration_ms = this._duration_string_to_ms(duration);
+            this.strategy.handle_timed_action(mcp_tool, duration_ms, pygame_down_cmd, pygame_up_cmd, kwargs);
             state.active = false;
         }
     }
@@ -273,20 +277,20 @@ export class ActionHandler {
         }
     }
 
-    process_edge_detections(keys_pressed: { [key: number]: boolean }): void {
+    process_edge_detections(keys_pressed: { [key: string]: boolean }): void {
         // Hotbar slots 1-9
         for (let i = 0; i < 9; i++) {
             const key_name = `hotbar_${i}`;
-            const key_code = Keys[`K_${i + 1}` as keyof typeof Keys] as number;
+            const key_code = Keys[`K_${i + 1}` as keyof typeof Keys];
             const [just_pressed] = this._detect_key_edge(key_name, keys_pressed[key_code]);
             if (just_pressed) this.handle_hotbar_slot(i);
         }
 
         // Other keys
-        const key_map: KeyMap = {
-            'drop_item': { key: Keys.K_q as number, handler: this.handle_drop_item },
-            'swap_hands': { key: Keys.K_f as number, handler: this.handle_swap_hands },
-            'inventory': { key: Keys.K_e as number, handler: this.handle_inventory },
+        const key_map: { [key: string]: { key: string; handler: () => void } } = {
+            'drop_item': { key: Keys.K_q, handler: this.handle_drop_item },
+            'swap_hands': { key: Keys.K_f, handler: this.handle_swap_hands },
+            'inventory': { key: Keys.K_e, handler: this.handle_inventory },
         };
         for (const [name, { key, handler }] of Object.entries(key_map)) {
             const [just_pressed] = this._detect_key_edge(name, keys_pressed[key]);
@@ -294,7 +298,7 @@ export class ActionHandler {
         }
     }
 
-    private _log_mcp_command(tool: string, parameters: Record<string, any>): void {
+    _log_mcp_command(tool: string, parameters: Record<string, any>): void {
         if (this.state.enable_logging) {
             const mcp_command = { tool, parameters };
             console.log(`LOGGED: ${JSON.stringify(mcp_command)}`);
@@ -303,11 +307,8 @@ export class ActionHandler {
 }
 // =======================================================================
 export type { 
-    ActionState, 
-    ActionStates, 
-    ControllerState, 
     ModeStrategy, 
-    Controller, 
+    ControllerMethods, 
     DurationString, 
     PygameCommand,
     Actions

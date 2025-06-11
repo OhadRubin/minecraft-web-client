@@ -90,7 +90,7 @@ class Button extends UIElement {
 }
 
 class ToggleButton extends Button {
-    protected toggled: boolean;
+    public toggled: boolean;
 
     constructor(x: number, y: number, w: number, h: number, text: string, font: Font) {
         super(x, y, w, h, text, font);
@@ -121,11 +121,11 @@ class ToggleButton extends Button {
 }
 
 class VirtualJoystick extends UIElement {
-    private center_x: number;
-    private center_y: number;
-    private radius: number;
-    private knob_x: number;
-    private knob_y: number;
+    center_x: number;
+    center_y: number;
+    radius: number;
+    knob_x: number;
+    knob_y: number;
     private is_dragging: boolean;
 
     constructor(x: number, y: number, radius: number) {
@@ -171,7 +171,7 @@ class VirtualJoystick extends UIElement {
 }
 
 class TouchArea extends UIElement {
-    private is_touching: boolean;
+    is_touching: boolean;
     private last_pos: Position | null;
 
     constructor(x: number, y: number, w: number, h: number) {

@@ -57,9 +57,9 @@ class UIManager {
     private lookPathTracker: LookPathTracker;
     private font: Font;
     private elements: UIElements;
-    private movement_joystick: VirtualJoystick;
-    private keyboard_movement: KeyboardMovement;
-    private camera_area: TouchArea;
+    movement_joystick: VirtualJoystick;
+    keyboard_movement: KeyboardMovement;
+    camera_area: TouchArea;
     private left_click_btn: Button;
     private right_click_btn: Button;
     private jump_btn: Button;

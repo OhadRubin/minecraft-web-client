@@ -12,6 +12,7 @@ interface ActionStates {
     jump: ActionState;
     sneak: { active: boolean };
     sprint: { active: boolean };
+    [key: string]: ActionState | { active: boolean };
 }
 
 interface ControllerStateOptions {
