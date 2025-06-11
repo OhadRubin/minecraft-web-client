@@ -7,7 +7,8 @@
         "build": "tsc",
         "watch": "tsc --watch",
         "clean": "rm -rf dist",
-        "start": "tsc --watch & python -m http.server 8090"
+        "start": "tsc --watch & python log_server.py",
+        "serve": "python log_server.py"
     },
     "devDependencies": {
         "typescript": "^5.0.0"

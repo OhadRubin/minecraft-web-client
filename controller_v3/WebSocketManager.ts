@@ -136,6 +136,9 @@ export class WebSocketManager {
     }
 
     public async sendCommand(command: WebSocketCommand): Promise<void> {
+        // Log to server console
+        this.logToServer(`📤 sendCommand called with: ${JSON.stringify(command)}`);
+        
         await this.send(command);
     }
 
@@ -196,6 +199,27 @@ export class WebSocketManager {
                 handler(ConnectionStatus.Error);
             }
         };
+    }
+
+    // Log to server console via HTTP request
+    private logToServer(message: string): void {
+        const timestamp = new Date().toISOString();
+        const logMessage = `[${timestamp}] ${message}`;
+        
+        // Send to server log endpoint
+        fetch('/log', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ message: logMessage })
+        }).catch(error => {
+            // Silent fail - don't log fetch errors to avoid recursion
+            console.log(`Failed to log to server: ${error.message}`);
+        });
+        
+        // Also log to browser console
+        console.log(logMessage);
     }
 
     // Cleanup method
