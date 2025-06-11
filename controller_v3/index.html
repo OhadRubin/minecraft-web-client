@@ -74,6 +74,34 @@
             width: 100px;
             padding: 5px;
         }
+
+        #terminal-container {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            max-width: 800px;
+        }
+
+        #terminal-container h3 {
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+
+        #terminal {
+            width: 100%;
+            height: 200px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            background-color: #1e1e1e;
+            color: #ffffff;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            padding: 10px;
+            overflow-y: auto;
+            resize: vertical;
+        }
     </style>
 </head>
 <body>
@@ -98,8 +126,25 @@
         </div>
     </div>
 
+    <div id="terminal-container">
+        <h3>WebSocket Commands Log</h3>
+        <textarea id="terminal" readonly></textarea>
+    </div>
+
     <script type="module">
         import { GamepadController } from './dist/GamepadController.js';
+        
+        // Initialize simple terminal (textarea)
+        const terminal = document.getElementById('terminal');
+        terminal.value = '🎮 WebSocket Commands Log initialized\n' + '='.repeat(50) + '\n';
+        
+        // Make terminal globally accessible for logging
+        window.gamepadTerminal = {
+            writeln: function(text) {
+                terminal.value += text + '\n';
+                terminal.scrollTop = terminal.scrollHeight;
+            }
+        };
         
         // Initialize the gamepad controller
         const controller = new GamepadController('canvas', 'ws://localhost:8081');

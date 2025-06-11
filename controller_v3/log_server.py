@@ -7,8 +7,6 @@ Serves static files and handles POST /log requests
 import http.server
 import socketserver
 import json
-import urllib.parse
-from datetime import datetime
 
 class LoggingHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self):
@@ -52,7 +50,7 @@ class LoggingHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
 
 if __name__ == "__main__":
-    PORT = 8090
+    PORT = 8091
     
     print(f"🚀 Starting controller_v3 server with logging on port {PORT}")
     print(f"📁 Serving files from: {__file__.replace('/log_server.py', '')}")

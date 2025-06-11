@@ -139,6 +139,9 @@ export class WebSocketManager {
         // Log to server console
         this.logToServer(`📤 sendCommand called with: ${JSON.stringify(command)}`);
         
+        // Log to terminal in HTML
+        this.logToTerminal(command);
+        
         await this.send(command);
     }
 
@@ -199,6 +202,21 @@ export class WebSocketManager {
                 handler(ConnectionStatus.Error);
             }
         };
+    }
+
+    // Log to terminal in HTML page
+    private logToTerminal(command: WebSocketCommand): void {
+        try {
+            const terminal = (window as any).gamepadTerminal;
+            if (terminal) {
+                const timestamp = new Date().toLocaleTimeString();
+                const commandStr = JSON.stringify(command, null, 2);
+                terminal.writeln(`\r\n[${timestamp}] 📤 Command:`);
+                terminal.writeln(`${commandStr}`);
+            }
+        } catch (error) {
+            console.log('Failed to log to terminal:', error);
+        }
     }
 
     // Log to server console via HTTP request
