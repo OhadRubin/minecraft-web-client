@@ -30,3 +30,24 @@ async def test_basic_send(tmp_path):
     await done.wait()
     server.close()
     await server.wait_closed()
+
+@pytest.mark.asyncio
+async def test_connect_callbacks(tmp_path):
+    server = await websockets.serve(echo, "localhost", 8766)
+    connected = asyncio.Event()
+    disconnected = asyncio.Event()
+
+    def on_connect():
+        connected.set()
+
+    def on_disconnect():
+        disconnected.set()
+
+    client = WebSocketClient("ws://localhost:8766", on_connect=on_connect, on_disconnect=on_disconnect)
+    client.start()
+    await asyncio.wait_for(connected.wait(), timeout=1)
+    await asyncio.sleep(0.1)
+    await client.stop()
+    await asyncio.wait_for(disconnected.wait(), timeout=1)
+    server.close()
+    await server.wait_closed()
