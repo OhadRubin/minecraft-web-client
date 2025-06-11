@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Web Controller</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="controller-container">
+        <canvas id="main-canvas"></canvas>
+        <div id="status-area">
+            <span>Status: <span id="connection-status">Disconnected</span></span>
+            <span>Mode: <span id="mode-status">Pygame</span></span>
+        </div>
+        <div id="data-collection-log-container" style="display: none;">
+             <div id="data-collection-log"></div>
+             <button id="download-log-btn">Download Trace Log</button>
+        </div>
+    </div>
+
+    <script type="module" src="main.js"></script>
+</body>
+</html>
