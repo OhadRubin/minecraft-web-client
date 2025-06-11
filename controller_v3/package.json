@@ -1,0 +1,16 @@
+{
+    "name": "gamepad-controller-v3",
+    "version": "1.0.0",
+    "description": "Gamepad controller interface for Minecraft web client",
+    "main": "dist/GamepadController.js",
+    "scripts": {
+        "build": "tsc",
+        "watch": "tsc --watch",
+        "clean": "rm -rf dist",
+        "start": "tsc --watch & python -m http.server 8090"
+    },
+    "devDependencies": {
+        "typescript": "^5.0.0"
+    },
+    "type": "module"
+}
