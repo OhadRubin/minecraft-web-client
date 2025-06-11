@@ -4,22 +4,92 @@ import { LookPathTracker } from "./look_path.js";
 import { UIManager } from "./ui_manager.js";
 import { ActionHandler } from "./action_handler.js";
 import { MCPModeStrategy, PygameModeStrategy } from "./mode_strategy.js";
+
 // === START_OF: main controller
 // =======================================================================
 
+// Type definitions
+interface ControllerOptions {
+    mode?: 'pygame' | 'mcp';
+    data_collection_enabled?: boolean;
+    sensitivity?: number;
+    enable_logging?: boolean;
+    [key: string]: any;
+}
+
+interface Surface {
+    ctx: CanvasRenderingContext2D;
+    width: number;
+    height: number;
+    draw: PygameDraw;
+}
+
+interface MCPCommand {
+    tool: string;
+    parameters: Record<string, any>;
+}
+
+interface MCPResponse {
+    content: Array<{
+        type: 'text' | 'image';
+        text?: string;
+        data?: string;
+    }>;
+}
+
+interface MockMCPServer {
+    execute_tool: (toolName: string, params: Record<string, any>) => Promise<MCPResponse>;
+}
+
+interface WebSocketCommand {
+    init?: string;
+    [key: string]: any;
+}
+
+interface MousePosition {
+    x: number;
+    y: number;
+}
+
+interface UIAction {
+    type: string;
+    [key: string]: any;
+}
+
+type ModeStrategy = MCPModeStrategy | PygameModeStrategy;
+
 class MinecraftController {
-    constructor(options = {}) {
+    private state: ControllerState;
+    private surface: Surface;
+    private input: InputManager;
+    private look_path_tracker: LookPathTracker;
+    private strategy: ModeStrategy;
+    private ui_manager: UIManager;
+    private action_handler: ActionHandler;
+
+    constructor(options: ControllerOptions = {}) {
         this.state = new ControllerState(options);
 
-        const canvas = document.getElementById('main-canvas');
+        const canvas = document.getElementById('main-canvas') as HTMLCanvasElement;
+        if (!canvas) {
+            throw new Error('Canvas element with id "main-canvas" not found');
+        }
+        
         canvas.width = WINDOW_WIDTH;
         canvas.height = WINDOW_HEIGHT;
+        
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            throw new Error('Could not get 2D rendering context from canvas');
+        }
+        
         this.surface = { 
-            ctx: canvas.getContext('2d'),
+            ctx,
             width: WINDOW_WIDTH,
             height: WINDOW_HEIGHT,
+            draw: new PygameDraw(ctx)
         };
-        this.surface.draw = new PygameDraw(this.surface.ctx);
+        
         this.input = new InputManager(canvas);
 
         this.look_path_tracker = new LookPathTracker(
@@ -33,7 +103,7 @@ class MinecraftController {
         }
         
         // The original used a callback for MCP mode. We'll simplify this.
-        this.look_path_tracker.set_execution_callback((mcp_command) => {
+        this.look_path_tracker.set_execution_callback((mcp_command: MCPCommand) => {
             if (this.state.mode === 'mcp') {
                 this.execute_mcp_action(mcp_command);
             } else if (this.state.mode === 'pygame' && this.state.data_collection_enabled) {
@@ -56,17 +126,19 @@ class MinecraftController {
         
         if (this.state.data_collection_enabled) {
             console.log("🎬 Data collection enabled! Hotkeys: F5=Start session (mock)");
-            const downloadBtn = document.getElementById('download-log-btn');
-            downloadBtn.onclick = () => {
-                BrowserFileHandler.downloadLog(this.strategy.traceLog.join('\n'), 'trace.txt');
-            };
+            const downloadBtn = document.getElementById('download-log-btn') as HTMLButtonElement;
+            if (downloadBtn) {
+                downloadBtn.onclick = () => {
+                    BrowserFileHandler.downloadLog(this.strategy.traceLog.join('\n'), 'trace.txt');
+                };
+            }
         }
     }
 
-    _create_mcp_server_for_data_collection() {
+    private _create_mcp_server_for_data_collection(): MockMCPServer {
         console.log("🔧 Creating MOCK MCP server for data collection in browser.");
         return {
-            execute_tool: async (toolName, params) => {
+            execute_tool: async (toolName: string, params: Record<string, any>): Promise<MCPResponse> => {
                 console.log(`MOCK MCP SERVER: execute_tool(${toolName}) called`);
                 if (toolName === "getBotStatus") {
                     await new Promise(resolve => setTimeout(resolve, 200)); // Simulate network latency
@@ -83,7 +155,7 @@ class MinecraftController {
         };
     }
 
-    _handle_camera_drag_state(mouse_pressed) {
+    private _handle_camera_drag_state(mouse_pressed: boolean): void {
         const camera_is_clicking = this.ui_manager.camera_area.is_touching && mouse_pressed;
         const prev_clicking = this.state.camera_was_clicking;
 
@@ -98,7 +170,7 @@ class MinecraftController {
         }
     }
     
-    start_websocket_connection() {
+    start_websocket_connection(): void {
         if (this.state.websocket) {
             this.state.websocket.close();
         }
@@ -107,25 +179,25 @@ class MinecraftController {
         
         this.state.websocket = new WebSocket(uri);
 
-        this.state.websocket.onopen = (event) => {
+        this.state.websocket.onopen = (event: Event) => {
             console.log("Connected to Minecraft Web Client!");
             this.state.connected = true;
-            const init_message = { init: this.state.mode };
-            this.state.websocket.send(JSON.stringify(init_message));
+            const init_message: WebSocketCommand = { init: this.state.mode };
+            this.state.websocket!.send(JSON.stringify(init_message));
         };
         
-        this.state.websocket.onclose = (event) => {
+        this.state.websocket.onclose = (event: CloseEvent) => {
             console.log("Disconnected from Minecraft Web Client.");
             this.state.connected = false;
         };
 
-        this.state.websocket.onerror = (event) => {
+        this.state.websocket.onerror = (event: Event) => {
             console.error("WebSocket error:", event);
             this.state.connected = false;
         };
     }
 
-    send_command_sync(command) {
+    send_command_sync(command: WebSocketCommand): void {
         if (this.state.websocket && this.state.connected) {
             try {
                 this.state.websocket.send(JSON.stringify(command));
@@ -136,29 +208,29 @@ class MinecraftController {
         }
     }
     
-    execute_mcp_action(mcp_command) {
+    execute_mcp_action(mcp_command: MCPCommand): void {
         console.log(`🎮 Executing: ${mcp_command.tool}(${JSON.stringify(mcp_command.parameters)})`);
         // In a real MCP setup, this would send to a server. Here we just log it.
     }
     
-     _execute_pygame_mcp_action(mcp_command) {
+    private _execute_pygame_mcp_action(mcp_command: MCPCommand): void {
         if (!this.strategy._queue_parallel_mcp_execution) return;
-        const action = { type: mcp_command.tool, ...mcp_command.parameters };
+        const action: UIAction = { type: mcp_command.tool, ...mcp_command.parameters };
         this.strategy._queue_parallel_mcp_execution(
             [action], `Camera drag: ${mcp_command.tool}`
         );
     }
     
-    _process_frame(timestamp) {
-        const events = []; // Can be populated if specific event objects are needed
+    private _process_frame(timestamp: number): void {
+        const events: Event[] = []; // Can be populated if specific event objects are needed
         
-        const mouse_pos = this.input.getMousePos();
-        const mouse_pressed = this.input.getMousePressed()[0];
-        const keys_pressed = this.input.getPressed();
+        const mouse_pos: MousePosition = this.input.getMousePos();
+        const mouse_pressed: boolean = this.input.getMousePressed()[0];
+        const keys_pressed: Record<string, boolean> = this.input.getPressed();
 
-        const event_actions = this.ui_manager.process_events(events);
-        const ui_actions = this.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed);
-        const keyboard_actions = this.ui_manager.process_keyboard_shortcuts(keys_pressed);
+        const event_actions: UIAction[] = this.ui_manager.process_events(events);
+        const ui_actions: UIAction[] = this.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed);
+        const keyboard_actions: UIAction[] = this.ui_manager.process_keyboard_shortcuts(keys_pressed);
         
         this.action_handler.process_actions(
             [...event_actions, ...ui_actions, ...keyboard_actions]
@@ -172,18 +244,19 @@ class MinecraftController {
         this.ui_manager.draw();
 
         if (this.state.running) {
-            requestAnimationFrame((t) => this._process_frame(t));
+            requestAnimationFrame((t: number) => this._process_frame(t));
         }
     }
 
-    run() {
+    run(): void {
         console.log(`Starting Minecraft Controller in ${this.state.mode.toUpperCase()} mode...`);
         this.strategy.connect();
         this.state.running = true;
-        requestAnimationFrame((t) => this._process_frame(t));
+        requestAnimationFrame((t: number) => this._process_frame(t));
     }
 }
 
 // =======================================================================
 export { MinecraftController };
+export type { ControllerOptions, MCPCommand, MCPResponse, MockMCPServer, WebSocketCommand, MousePosition, UIAction };
 // === END_OF: main controller

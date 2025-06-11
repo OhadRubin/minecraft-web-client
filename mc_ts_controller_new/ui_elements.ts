@@ -1,21 +1,71 @@
 import { COLORS, Keys } from "./porting.js";
+
+// Type definitions
+interface Rect {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+}
+
+interface Position {
+    x: number;
+    y: number;
+}
+
+type MousePosition = [number, number];
+type JoystickDelta = [number, number];
+type CameraDelta = [number, number] | null;
+type ButtonState = 'down' | 'up' | 'toggled' | null;
+
+interface Surface {
+    draw: {
+        rect: (surface: Surface, color: number[] | string, rect: number[], width?: number) => void;
+        circle: (surface: Surface, color: number[] | string, center: number[], radius: number) => void;
+    };
+}
+
+interface Font {
+    render: (text: string, position: number[], color: number[] | string) => void;
+}
+
+interface LookPathTracker {
+    add_movement: (dx: number, dy: number) => void;
+}
+
+interface KeysState {
+    [key: string]: boolean;
+}
+
 // === START_OF: ui_elements.py (Inferred Implementation)
 // =======================================================================
-class UIElement {
-    constructor(x, y, w, h) {
+abstract class UIElement {
+    protected rect: Rect;
+
+    constructor(x: number, y: number, w: number, h: number) {
         this.rect = { x, y, w, h };
     }
-    is_hovered(mousePos) {
+
+    is_hovered(mousePos: MousePosition): boolean {
         const [mx, my] = mousePos;
         return mx >= this.rect.x && mx <= this.rect.x + this.rect.w &&
                my >= this.rect.y && my <= this.rect.y + this.rect.h;
     }
-    draw(surface, font) {}
-    handle_event(event, mousePos) { return null; }
+
+    abstract draw(surface: Surface, font: Font): void;
+    
+    handle_event(event: any, mousePos: MousePosition): any {
+        return null;
+    }
 }
 
 class Button extends UIElement {
-    constructor(x, y, w, h, text, font) {
+    protected text: string;
+    protected font: Font;
+    protected is_pressed: boolean;
+    protected hovered: boolean;
+
+    constructor(x: number, y: number, w: number, h: number, text: string, font: Font) {
         super(x, y, w, h);
         this.text = text;
         this.font = font;
@@ -23,13 +73,13 @@ class Button extends UIElement {
         this.hovered = false;
     }
 
-    draw(surface, font) {
-        let color = this.is_pressed ? COLORS.BUTTON_PRESSED : (this.hovered ? COLORS.BUTTON_HOVER : COLORS.BUTTON_IDLE);
+    draw(surface: Surface, font: Font): void {
+        const color = this.is_pressed ? COLORS.BUTTON_PRESSED : (this.hovered ? COLORS.BUTTON_HOVER : COLORS.BUTTON_IDLE);
         surface.draw.rect(surface, color, [this.rect.x, this.rect.y, this.rect.w, this.rect.h]);
         font.render(this.text, [this.rect.x + 10, this.rect.y + 10], COLORS.TEXT_COLOR);
     }
     
-    handle_input(mousePos, mousePressed) {
+    handle_input(mousePos: MousePosition, mousePressed: boolean): ButtonState {
         this.hovered = this.is_hovered(mousePos);
         const was_pressed = this.is_pressed;
         this.is_pressed = this.hovered && mousePressed;
@@ -40,34 +90,45 @@ class Button extends UIElement {
 }
 
 class ToggleButton extends Button {
-    constructor(x, y, w, h, text, font) {
+    protected toggled: boolean;
+
+    constructor(x: number, y: number, w: number, h: number, text: string, font: Font) {
         super(x, y, w, h, text, font);
         this.toggled = false;
     }
 
-    draw(surface, font) {
+    draw(surface: Surface, font: Font): void {
         let color = this.toggled ? COLORS.TOGGLE_ON : COLORS.TOGGLE_OFF;
-        if (this.hovered) color = color.map(c => Math.min(255, c + 30));
+        if (this.hovered) {
+            color = (color as number[]).map(c => Math.min(255, c + 30));
+        }
         surface.draw.rect(surface, color, [this.rect.x, this.rect.y, this.rect.w, this.rect.h]);
         font.render(`${this.text}: ${this.toggled ? 'ON' : 'OFF'}`, [this.rect.x + 10, this.rect.y + 10], COLORS.TEXT_COLOR);
     }
     
-    handle_input(mousePos, mousePressed) {
-       this.hovered = this.is_hovered(mousePos);
-       if (this.hovered && mousePressed && !this.is_pressed) {
-           this.is_pressed = true;
-           this.toggled = !this.toggled;
-           return 'toggled';
-       }
-       if (!mousePressed) {
-           this.is_pressed = false;
-       }
-       return null;
+    handle_input(mousePos: MousePosition, mousePressed: boolean): ButtonState {
+        this.hovered = this.is_hovered(mousePos);
+        if (this.hovered && mousePressed && !this.is_pressed) {
+            this.is_pressed = true;
+            this.toggled = !this.toggled;
+            return 'toggled';
+        }
+        if (!mousePressed) {
+            this.is_pressed = false;
+        }
+        return null;
     }
 }
 
 class VirtualJoystick extends UIElement {
-    constructor(x, y, radius) {
+    private center_x: number;
+    private center_y: number;
+    private radius: number;
+    private knob_x: number;
+    private knob_y: number;
+    private is_dragging: boolean;
+
+    constructor(x: number, y: number, radius: number) {
         super(x - radius, y - radius, radius * 2, radius * 2);
         this.center_x = x;
         this.center_y = y;
@@ -77,12 +138,12 @@ class VirtualJoystick extends UIElement {
         this.is_dragging = false;
     }
 
-    draw(surface, font) {
+    draw(surface: Surface, font: Font): void {
         surface.draw.circle(surface, COLORS.JOYSTICK_BASE, [this.center_x, this.center_y], this.radius);
         surface.draw.circle(surface, COLORS.JOYSTICK_KNOB, [this.knob_x, this.knob_y], this.radius / 2);
     }
     
-    handle_input(mousePos, mousePressed) {
+    handle_input(mousePos: MousePosition, mousePressed: boolean): JoystickDelta {
         const [mx, my] = mousePos;
         const dist_from_center = Math.hypot(mx - this.center_x, my - this.center_y);
 
@@ -110,18 +171,21 @@ class VirtualJoystick extends UIElement {
 }
 
 class TouchArea extends UIElement {
-     constructor(x, y, w, h) {
+    private is_touching: boolean;
+    private last_pos: Position | null;
+
+    constructor(x: number, y: number, w: number, h: number) {
         super(x, y, w, h);
         this.is_touching = false;
         this.last_pos = null;
     }
     
-    draw(surface, font) {
-         surface.draw.rect(surface, COLORS.CAMERA_AREA, [this.rect.x, this.rect.y, this.rect.w, this.rect.h], 2);
-         font.render("Look Area", [this.rect.x + 10, this.rect.y + 10], COLORS.TEXT_COLOR);
+    draw(surface: Surface, font: Font): void {
+        surface.draw.rect(surface, COLORS.CAMERA_AREA, [this.rect.x, this.rect.y, this.rect.w, this.rect.h], 2);
+        font.render("Look Area", [this.rect.x + 10, this.rect.y + 10], COLORS.TEXT_COLOR);
     }
     
-    handle_input(mousePos, mousePressed, lookPathTracker) {
+    handle_input(mousePos: MousePosition, mousePressed: boolean, lookPathTracker: LookPathTracker): CameraDelta {
         const [mx, my] = mousePos;
         this.is_touching = this.is_hovered(mousePos);
         
@@ -142,9 +206,8 @@ class TouchArea extends UIElement {
     }
 }
 
-
 class KeyboardMovement {
-    handle_keyboard(keys) {
+    handle_keyboard(keys: KeysState): JoystickDelta {
         let x = 0;
         let y = 0;
         if (keys[Keys.K_w]) y -= 1;
@@ -165,4 +228,5 @@ class KeyboardMovement {
 
 // =======================================================================
 export { UIElement, Button, ToggleButton, VirtualJoystick, TouchArea, KeyboardMovement };
+export type { Rect, Position, MousePosition, JoystickDelta, CameraDelta, ButtonState, Surface, Font, LookPathTracker, KeysState };
 // === END_OF: ui_elements.py

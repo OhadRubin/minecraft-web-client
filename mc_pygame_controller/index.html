@@ -4,7 +4,57 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Minecraft Web Controller</title>
-    <link rel="stylesheet" href="style.css">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #333;
+            color: #eee;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            padding: 1em;
+            overflow: hidden;
+            height: 100vh;
+        }
+        #controller-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        canvas {
+            border: 2px solid #555;
+            background-color: #1a1a1a;
+            touch-action: none; /* Prevents browser gestures on the canvas */
+        }
+        #status-area {
+            display: flex;
+            gap: 20px;
+            font-size: 0.9em;
+            background-color: #2a2a2a;
+            padding: 5px 15px;
+            border-radius: 8px;
+            min-width: 300px;
+            justify-content: center;
+        }
+        #data-collection-log {
+            margin-top: 10px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.8em;
+            background: #222;
+            padding: 10px;
+            border-radius: 5px;
+            width: 800px;
+            height: 100px;
+            overflow-y: scroll;
+            border: 1px solid #444;
+        }
+         a {
+            color: #61dafb;
+        }
+    </style>
 </head>
 <body>
     <div id="controller-container">
@@ -19,6 +69,1425 @@
         </div>
     </div>
 
-    <script type="module" src="main.js"></script>
+<script type="module">
+// =======================================================================
+// === START_OF: Porting Infrastructure (Pygame, OS, etc. shims)
+// =======================================================================
+
+// --- Pygame Constants and Input Shim ---
+const WINDOW_WIDTH = 800;
+const WINDOW_HEIGHT = 600;
+const FPS = 60;
+
+const COLORS = {
+    BLACK: [0, 0, 0],
+    WHITE: [255, 255, 255],
+    RED: [255, 0, 0],
+    GREEN: [0, 255, 0],
+    BLUE: [0, 0, 255],
+    GRAY: [128, 128, 128],
+    DARK_GRAY: [40, 40, 40],
+    LIGHT_GRAY: [200, 200, 200],
+    CYAN: [0, 255, 255],
+    YELLOW: [255, 255, 0],
+    JOYSTICK_BASE: [80, 80, 80, 150],
+    JOYSTICK_KNOB: [120, 120, 120, 255],
+    BUTTON_IDLE: [100, 100, 100],
+    BUTTON_HOVER: [130, 130, 130],
+    BUTTON_PRESSED: [80, 180, 80],
+    TOGGLE_ON: [80, 200, 80],
+    TOGGLE_OFF: [200, 80, 80],
+    CAMERA_AREA: [50, 50, 70, 100],
+    TEXT_COLOR: [230, 230, 230],
+    CONNECTION_STATUS_OK: [0, 255, 0],
+    CONNECTION_STATUS_FAIL: [255, 0, 0],
+};
+
+function toCssColor(c, alpha = 1) {
+    if (c.length === 4) return `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${c[3] / 255})`;
+    return `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${alpha})`;
+}
+
+const Keys = {
+    K_1: '1', K_2: '2', K_3: '3', K_4: '4', K_5: '5', K_6: '6', K_7: '7', K_8: '8', K_9: '9',
+    K_q: 'q', K_w: 'w', K_e: 'e', K_a: 'a', K_s: 's', K_d: 'd',
+    K_f: 'f', K_g: 'g', K_r: 'r', K_z: 'z', K_x: 'x', K_c: 'c',
+    K_LCTRL: 'Control', K_LSHIFT: 'Shift', K_TAB: 'Tab', K_SPACE: ' ', K_ESCAPE: 'Escape',
+    K_F5: 'F5', K_F6: 'F6', K_F7: 'F7',
+};
+
+// --- Global Input State Manager ---
+class InputManager {
+    keysPressed = new Set();
+    mousePos = { x: 0, y: 0 };
+    mouseLeftPressed = false;
+
+    constructor(canvas) {
+        window.addEventListener('keydown', e => this.keysPressed.add(e.key));
+        window.addEventListener('keyup', e => this.keysPressed.delete(e.key));
+        canvas.addEventListener('mousemove', e => {
+            const rect = canvas.getBoundingClientRect();
+            this.mousePos.x = e.clientX - rect.left;
+            this.mousePos.y = e.clientY - rect.top;
+        });
+        canvas.addEventListener('mousedown', e => {
+            if (e.button === 0) this.mouseLeftPressed = true;
+        });
+        canvas.addEventListener('mouseup', e => {
+            if (e.button === 0) this.mouseLeftPressed = false;
+        });
+    }
+
+    getPressed() {
+        // Mimics pygame.key.get_pressed() using a Proxy for easy checking
+        return new Proxy({}, {
+            get: (target, prop) => this.keysPressed.has(prop)
+        });
+    }
+
+    getMousePos() {
+        return [this.mousePos.x, this.mousePos.y];
+    }
+    
+    getMousePressed() {
+        // [left, middle, right]
+        return [this.mouseLeftPressed, false, false];
+    }
+}
+
+// --- Drawing Helpers ---
+class PygameDraw {
+    constructor(ctx) {
+        this.ctx = ctx;
+    }
+    rect(surface, color, [x, y, w, h], width = 0, borderRadius = 0) {
+        this.ctx.fillStyle = toCssColor(color);
+        this.ctx.strokeStyle = toCssColor(color);
+        this.ctx.lineWidth = width;
+        if (width > 0) {
+            this.ctx.strokeRect(x, y, w, h);
+        } else {
+            this.ctx.fillRect(x, y, w, h);
+        }
+    }
+    circle(surface, color, [x, y], radius, width = 0) {
+        this.ctx.beginPath();
+        this.ctx.arc(x, y, radius, 0, 2 * Math.PI);
+        this.ctx.fillStyle = toCssColor(color);
+        this.ctx.strokeStyle = toCssColor(color);
+        this.ctx.lineWidth = width > 0 ? width : 1;
+        if (width === 0) {
+            this.ctx.fill();
+        } else {
+            this.ctx.stroke();
+        }
+    }
+}
+
+// --- OS/File Shim for Browser ---
+class BrowserFileHandler {
+    static createDownloadLink(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.textContent = `Download ${filename}`;
+        a.style.display = 'block';
+        a.style.marginTop = '5px';
+        a.onclick = () => setTimeout(() => URL.revokeObjectURL(url), 100);
+        return a;
+    }
+    
+    static saveScreenshotFile(base64Data, sessionId, toolName) {
+        const logArea = document.getElementById('data-collection-log');
+        if (!logArea) return;
+        
+        const byteString = atob(base64Data);
+        const mimeString = 'image/png';
+        const ab = new ArrayBuffer(byteString.length);
+        const ia = new Uint8Array(ab);
+        for (let i = 0; i < byteString.length; i++) {
+            ia[i] = byteString.charCodeAt(i);
+        }
+        const blob = new Blob([ab], { type: mimeString });
+        const filename = `${Math.floor(Date.now() / 1000)}_${toolName}.png`;
+        
+        const link = this.createDownloadLink(blob, filename);
+        logArea.appendChild(link);
+        logArea.scrollTop = logArea.scrollHeight;
+        
+        return filename;
+    }
+    
+    static downloadLog(content, filename) {
+        const blob = new Blob([content], { type: 'text/plain' });
+        const link = this.createDownloadLink(blob, filename);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+}
+
+// =======================================================================
+// === END_OF: Porting Infrastructure
+// =======================================================================
+
+
+// =======================================================================
+// === START_OF: action_converter.py
+// =======================================================================
+
+class ActionConverter {
+    // Shared constants - single source of truth
+    static MOVEMENT_THRESHOLD = 0.1;
+    static LOOK_THRESHOLD = 0.2;
+    static SENSITIVITY = 0.5;
+    static MAGNITUDE_DURATION_SCALE = 2000;
+
+    static convert_pygame_action(action) {
+        if (typeof action !== 'object' || action === null) {
+            return null;
+        }
+
+        const actionType = action.type;
+
+        if (actionType === "move") {
+            return ActionConverter._convert_move_action(action);
+        } else if (actionType === "look") {
+            return ActionConverter._convert_look_action(action);
+        } else if (actionType === "documentMouseEvent" && action.button === 0) {
+            if (action.action === "down") {
+                return ActionConverter._convert_left_click_action(action);
+            }
+            return null;
+        } else if (actionType === "rightDown") {
+            return ActionConverter._convert_right_click_action(action);
+        }
+
+        return null;
+    }
+
+    static _convert_move_action(action) {
+        const x = action.x ?? 0;
+        const z = action.z ?? 0;
+
+        if (Math.abs(x) > ActionConverter.MOVEMENT_THRESHOLD || Math.abs(z) > ActionConverter.MOVEMENT_THRESHOLD) {
+            const magnitude = Math.sqrt(x ** 2 + z ** 2);
+            const duration = Math.floor(magnitude * ActionConverter.MAGNITUDE_DURATION_SCALE);
+            return { tool: "walk", parameters: { duration } };
+        }
+        return null;
+    }
+
+    static _convert_look_action(action) {
+        const movementX = action.movementX ?? 0;
+        const movementY = action.movementY ?? 0;
+
+        const xAngle = movementX / ActionConverter.SENSITIVITY;
+        const yAngle = -(movementY / ActionConverter.SENSITIVITY); // Invert Y axis
+
+        if (Math.abs(xAngle) > ActionConverter.LOOK_THRESHOLD || Math.abs(yAngle) > ActionConverter.LOOK_THRESHOLD) {
+            return {
+                tool: "lookAngle",
+                parameters: {
+                    xAngle: Math.round(xAngle * 10) / 10,
+                    yAngle: Math.round(yAngle * 10) / 10,
+                    speed: "normal",
+                },
+            };
+        }
+        return null;
+    }
+
+    static _convert_left_click_action(action) {
+        return { tool: "leftClick", parameters: { duration: "short" } };
+    }
+
+    static _convert_right_click_action(action) {
+        return { tool: "rightClick", parameters: { duration: "short" } };
+    }
+
+    static convert_pygame_actions_bulk(actions) {
+        const mcp_actions = [];
+        for (const action of actions) {
+            if (typeof action === 'object' && action !== null) {
+                const converted = ActionConverter.convert_pygame_action(action);
+                if (converted) {
+                    mcp_actions.push(converted);
+                }
+            } else if (typeof action === 'string') {
+                const converted = ActionConverter._convert_string_action(action);
+                if (converted) {
+                    mcp_actions.push(converted);
+                }
+            }
+        }
+        return mcp_actions;
+    }
+
+    static _convert_string_action(action_str) {
+        try {
+            if (action_str.includes('"move":')) {
+                return { tool: "walk", parameters: { duration: 1000 } };
+            } else if (action_str.includes('"look":')) {
+                const action_data = JSON.parse(action_str);
+                if ("look" in action_data) {
+                    const look_data = action_data.look;
+                    const dict_action = {
+                        type: "look",
+                        movementX: look_data.movementX ?? 0,
+                        movementY: look_data.movementY ?? 0,
+                    };
+                    return ActionConverter.convert_pygame_action(dict_action);
+                }
+            }
+        } catch (e) {
+            console.warn(`⚠️ Could not parse legacy action: ${action_str} - ${e}`);
+        }
+        return null;
+    }
+
+    static to_simple_format(conversions) {
+        return conversions; // Already in the correct format
+    }
+
+    static to_openai_format(conversions, sequence_id) {
+        const tool_calls = [];
+        for (let i = 0; i < conversions.length; i++) {
+            const conversion = conversions[i];
+            if (conversion) {
+                tool_calls.push({
+                    id: `call_${sequence_id}_${conversion.tool}_${i}`,
+                    type: "function",
+                    function: {
+                        name: conversion.tool,
+                        arguments: JSON.stringify(conversion.parameters),
+                    },
+                });
+            }
+        }
+        return tool_calls;
+    }
+
+    static pygame_to_mcp_simple(actions) {
+        const conversions = ActionConverter.convert_pygame_actions_bulk(actions);
+        return ActionConverter.to_simple_format(conversions);
+    }
+
+    static pygame_to_openai_tools(actions, sequence_id) {
+        const conversions = ActionConverter.convert_pygame_actions_bulk(actions);
+        return ActionConverter.to_openai_format(conversions, sequence_id);
+    }
+}
+
+// This function seems separate from the class, so we port it as a standalone function.
+function convert_to_mcp_format(command_type, params) {
+    switch (command_type) {
+        case "left_click":
+        case "leftClick":
+            return { tool: "leftClick", parameters: { duration: params.duration ?? "medium" } };
+        case "right_click":
+        case "rightClick":
+            return { tool: "rightClick", parameters: { duration: params.duration ?? "medium" } };
+        case "walk":
+            return { tool: "walk", parameters: { duration: params.duration ?? 1000 } };
+        case "setHotbarSlot":
+            return { tool: "setHotbarSlot", parameters: { slot: params.slot ?? 0 } };
+        case "jump":
+            return { tool: "jump", parameters: { duration: params.duration ?? "short" } };
+        case "sneak":
+            return { tool: "sneak", parameters: { state: params.state ?? true } };
+        case "sprint":
+            return { tool: "sprint", parameters: { state: params.state ?? true } };
+        case "toggleInventory":
+            return { tool: "toggleInventory", parameters: {} };
+        case "dropItem":
+            return { tool: "dropItem", parameters: { amount: params.amount ?? 1 } };
+        case "swapHands":
+            return { tool: "swapHands", parameters: {} };
+        default:
+            return null;
+    }
+}
+
+// =======================================================================
+// === END_OF: action_converter.py
+// =======================================================================
+
+
+// =======================================================================
+// === START_OF: controller_state.py
+// =======================================================================
+
+class ControllerState {
+    running = true;
+    connected = false;
+    mode = "pygame";
+    sensitivity = 5.0;
+    enable_logging = false;
+    data_collection_enabled = false;
+    conversation_session_active = false;
+    current_task_description = "";
+    session_start_time = 0;
+    inventory_open = false;
+    current_context = "world";
+    last_inventory_toggle_time = 0;
+    current_hotbar_slot = 0;
+    last_hotbar_slot = -1;
+    last_movement = [0.0, 0.0];
+    last_moved_in_mcp_mode = 0;
+    action_states = {
+        left_click: { active: false, start_time: null },
+        right_click: { active: false, start_time: null },
+        jump: { active: false, start_time: null },
+        sneak: { active: false },
+        sprint: { active: false },
+    };
+    last_key_states = {};
+    camera_was_clicking = false;
+    websocket = null;
+    mcp_server = null; // Ported from Python
+
+    constructor(options = {}) {
+        this.mode = options.mode ?? "pygame";
+        this.sensitivity = options.sensitivity ?? 5.0;
+        this.enable_logging = options.enable_logging ?? false;
+        this.data_collection_enabled = options.data_collection_enabled ?? false;
+    }
+}
+
+// =======================================================================
+// === END_OF: controller_state.py
+// =======================================================================
+
+
+// =======================================================================
+// === START_OF: look_path.py (Inferred Implementation)
+// =======================================================================
+
+class LookPathTracker {
+    constructor(sensitivity, enable_logging, mode) {
+        this.sensitivity = sensitivity;
+        this.enable_logging = enable_logging;
+        this.mode = mode;
+        this.path = [];
+        this.is_tracking = false;
+        this.execution_callback = null;
+    }
+
+    set_execution_callback(callback) {
+        this.execution_callback = callback;
+    }
+
+    start_mouse_tracking() {
+        if (this.is_tracking) return;
+        this.is_tracking = true;
+        this.path = [];
+        if (this.enable_logging) console.log("👁️ Look tracking started.");
+    }
+
+    stop_mouse_tracking() {
+        if (!this.is_tracking) return;
+        this.is_tracking = false;
+        if (this.path.length > 2) { // Need at least 3 points for a meaningful path
+            if (this.enable_logging) console.log(`👁️ Look tracking stopped. Path has ${this.path.length} points.`);
+            this.convert_path_to_action();
+        } else {
+            if (this.enable_logging) console.log("👁️ Look tracking stopped. Path too short, ignoring.");
+        }
+        this.path = [];
+    }
+
+    add_movement(dx, dy) {
+        if (this.is_tracking) {
+            this.path.push({ dx, dy, t: performance.now() });
+        }
+    }
+
+    clear_history() {
+        this.path = [];
+        if (this.enable_logging) console.log("👁️ Look path history cleared.");
+    }
+    
+    convert_path_to_action() {
+        if (!this.execution_callback || this.path.length === 0) return;
+
+        let total_dx = 0;
+        let total_dy = 0;
+        for (const p of this.path) {
+            total_dx += p.dx;
+            total_dy += p.dy;
+        }
+
+        const xAngle = total_dx / this.sensitivity;
+        const yAngle = -(total_dy / this.sensitivity); // Invert Y
+
+        // Simplified: convert the entire drag into one lookAngle command
+        const mcp_command = {
+            tool: 'lookAngle',
+            parameters: {
+                xAngle: Math.round(xAngle * 10) / 10,
+                yAngle: Math.round(yAngle * 10) / 10,
+                speed: "normal"
+            }
+        };
+
+        if (this.enable_logging) {
+            console.log("Executing look command from path:", mcp_command);
+        }
+        this.execution_callback(mcp_command);
+    }
+}
+
+// =======================================================================
+// === END_OF: look_path.py
+// =======================================================================
+
+// =======================================================================
+// === START_OF: ui_elements.py (Inferred Implementation)
+// =======================================================================
+class UIElement {
+    constructor(x, y, w, h) {
+        this.rect = { x, y, w, h };
+    }
+    is_hovered(mousePos) {
+        const [mx, my] = mousePos;
+        return mx >= this.rect.x && mx <= this.rect.x + this.rect.w &&
+               my >= this.rect.y && my <= this.rect.y + this.rect.h;
+    }
+    draw(surface, font) {}
+    handle_event(event, mousePos) { return null; }
+}
+
+class Button extends UIElement {
+    constructor(x, y, w, h, text, font) {
+        super(x, y, w, h);
+        this.text = text;
+        this.font = font;
+        this.is_pressed = false;
+        this.hovered = false;
+    }
+
+    draw(surface, font) {
+        let color = this.is_pressed ? COLORS.BUTTON_PRESSED : (this.hovered ? COLORS.BUTTON_HOVER : COLORS.BUTTON_IDLE);
+        surface.draw.rect(surface, color, [this.rect.x, this.rect.y, this.rect.w, this.rect.h]);
+        font.render(this.text, [this.rect.x + 10, this.rect.y + 10], COLORS.TEXT_COLOR);
+    }
+    
+    handle_input(mousePos, mousePressed) {
+        this.hovered = this.is_hovered(mousePos);
+        const was_pressed = this.is_pressed;
+        this.is_pressed = this.hovered && mousePressed;
+        if (this.is_pressed && !was_pressed) return 'down';
+        if (!this.is_pressed && was_pressed) return 'up';
+        return null;
+    }
+}
+
+class ToggleButton extends Button {
+    constructor(x, y, w, h, text, font) {
+        super(x, y, w, h, text, font);
+        this.toggled = false;
+    }
+
+    draw(surface, font) {
+        let color = this.toggled ? COLORS.TOGGLE_ON : COLORS.TOGGLE_OFF;
+        if (this.hovered) color = color.map(c => Math.min(255, c + 30));
+        surface.draw.rect(surface, color, [this.rect.x, this.rect.y, this.rect.w, this.rect.h]);
+        font.render(`${this.text}: ${this.toggled ? 'ON' : 'OFF'}`, [this.rect.x + 10, this.rect.y + 10], COLORS.TEXT_COLOR);
+    }
+    
+    handle_input(mousePos, mousePressed) {
+       this.hovered = this.is_hovered(mousePos);
+       if (this.hovered && mousePressed && !this.is_pressed) {
+           this.is_pressed = true;
+           this.toggled = !this.toggled;
+           return 'toggled';
+       }
+       if (!mousePressed) {
+           this.is_pressed = false;
+       }
+       return null;
+    }
+}
+
+class VirtualJoystick extends UIElement {
+    constructor(x, y, radius) {
+        super(x - radius, y - radius, radius * 2, radius * 2);
+        this.center_x = x;
+        this.center_y = y;
+        this.radius = radius;
+        this.knob_x = x;
+        this.knob_y = y;
+        this.is_dragging = false;
+    }
+
+    draw(surface, font) {
+        surface.draw.circle(surface, COLORS.JOYSTICK_BASE, [this.center_x, this.center_y], this.radius);
+        surface.draw.circle(surface, COLORS.JOYSTICK_KNOB, [this.knob_x, this.knob_y], this.radius / 2);
+    }
+    
+    handle_input(mousePos, mousePressed) {
+        const [mx, my] = mousePos;
+        const dist_from_center = Math.hypot(mx - this.center_x, my - this.center_y);
+
+        if (mousePressed && !this.is_dragging && dist_from_center < this.radius) {
+            this.is_dragging = true;
+        }
+
+        if (this.is_dragging) {
+            if (mousePressed) {
+                const angle = Math.atan2(my - this.center_y, mx - this.center_x);
+                const clamped_dist = Math.min(dist_from_center, this.radius);
+                this.knob_x = this.center_x + Math.cos(angle) * clamped_dist;
+                this.knob_y = this.center_y + Math.sin(angle) * clamped_dist;
+            } else {
+                this.is_dragging = false;
+                this.knob_x = this.center_x;
+                this.knob_y = this.center_y;
+            }
+        }
+        
+        const dx = (this.knob_x - this.center_x) / this.radius;
+        const dz = (this.knob_y - this.center_y) / this.radius; // In canvas, Y is down, so this works for forward
+        return [dx, dz];
+    }
+}
+
+class TouchArea extends UIElement {
+     constructor(x, y, w, h) {
+        super(x, y, w, h);
+        this.is_touching = false;
+        this.last_pos = null;
+    }
+    
+    draw(surface, font) {
+         surface.draw.rect(surface, COLORS.CAMERA_AREA, [this.rect.x, this.rect.y, this.rect.w, this.rect.h], 2);
+         font.render("Look Area", [this.rect.x + 10, this.rect.y + 10], COLORS.TEXT_COLOR);
+    }
+    
+    handle_input(mousePos, mousePressed, lookPathTracker) {
+        const [mx, my] = mousePos;
+        this.is_touching = this.is_hovered(mousePos);
+        
+        if (this.is_touching && mousePressed) {
+            if (this.last_pos) {
+                const dx = mx - this.last_pos.x;
+                const dy = my - this.last_pos.y;
+                if (dx !== 0 || dy !== 0) {
+                    lookPathTracker.add_movement(dx, dy);
+                    return [dx, dy]; // Return delta
+                }
+            }
+            this.last_pos = { x: mx, y: my };
+        } else {
+            this.last_pos = null;
+        }
+        return null; // No delta
+    }
+}
+
+
+class KeyboardMovement {
+    handle_keyboard(keys) {
+        let x = 0;
+        let y = 0;
+        if (keys[Keys.K_w]) y -= 1;
+        if (keys[Keys.K_s]) y += 1;
+        if (keys[Keys.K_a]) x -= 1;
+        if (keys[Keys.K_d]) x += 1;
+        
+        // Normalize
+        const len = Math.hypot(x, y);
+        if (len > 0) {
+            x /= len;
+            y /= len;
+        }
+
+        return [x, y];
+    }
+}
+
+// =======================================================================
+// === END_OF: ui_elements.py
+// =======================================================================
+
+
+// =======================================================================
+// === START_OF: ui_manager.py (Inferred Implementation)
+// =======================================================================
+class UIManager {
+    constructor(surface, state, lookPathTracker) {
+        this.surface = surface;
+        this.state = state;
+        this.lookPathTracker = lookPathTracker;
+        this.font = {
+            render: (text, [x, y], color) => {
+                this.surface.ctx.fillStyle = toCssColor(color);
+                this.surface.ctx.font = '16px sans-serif';
+                this.surface.ctx.fillText(text, x, y);
+            }
+        };
+        this.elements = {};
+        this._setup_ui();
+    }
+
+    _setup_ui() {
+        this.movement_joystick = new VirtualJoystick(150, WINDOW_HEIGHT - 150, 70);
+        this.keyboard_movement = new KeyboardMovement();
+        
+        this.camera_area = new TouchArea(300, 100, WINDOW_WIDTH - 350, WINDOW_HEIGHT - 200);
+
+        this.left_click_btn = new Button(50, 100, 100, 50, "Left Click", this.font);
+        this.right_click_btn = new Button(50, 160, 100, 50, "Right Click", this.font);
+        this.jump_btn = new Button(50, 220, 100, 50, "Jump", this.font);
+        this.sneak_toggle = new ToggleButton(50, 280, 100, 50, "Sneak", this.font);
+        this.sprint_toggle = new ToggleButton(50, 340, 100, 50, "Sprint", this.font);
+
+        this.elements = {
+            movement_joystick: this.movement_joystick,
+            camera_area: this.camera_area,
+            left_click_btn: this.left_click_btn,
+            right_click_btn: this.right_click_btn,
+            jump_btn: this.jump_btn,
+            sneak_toggle: this.sneak_toggle,
+            sprint_toggle: this.sprint_toggle,
+        };
+    }
+    
+    process_events(events) {
+        // In the browser, most events are handled by global listeners.
+        // This can be used for things that require event objects, like key presses.
+        const actions = [];
+        for (const event of events) {
+            if (event.type === 'keydown') {
+                if (event.key === Keys.K_F5) actions.push(['save_demo_pressed', true]); // F5 to start
+            }
+        }
+        return actions;
+    }
+
+    process_inputs(mousePos, mousePressed, keysPressed) {
+        const actions = [];
+
+        // UI Buttons
+        const leftClickState = this.left_click_btn.handle_input(mousePos, mousePressed);
+        if (leftClickState) actions.push(['left_click', leftClickState === 'down']);
+        
+        const rightClickState = this.right_click_btn.handle_input(mousePos, mousePressed);
+        if (rightClickState) actions.push(['right_click', rightClickState === 'down']);
+        
+        const jumpState = this.jump_btn.handle_input(mousePos, mousePressed);
+        if (jumpState) actions.push(['jump', jumpState === 'down']);
+        
+        if (this.sneak_toggle.handle_input(mousePos, mousePressed) === 'toggled') {
+            actions.push(['sneak_toggled', this.sneak_toggle.toggled]);
+        }
+        if (this.sprint_toggle.handle_input(mousePos, mousePressed) === 'toggled') {
+            actions.push(['sprint_toggled', this.sprint_toggle.toggled]);
+        }
+
+        // Joystick and Keyboard Movement
+        const joy_move = this.movement_joystick.handle_input(mousePos, mousePressed);
+        const key_move = this.keyboard_movement.handle_keyboard(keysPressed);
+
+        let final_move = [0, 0];
+        if (Math.abs(joy_move[0]) > 0.1 || Math.abs(joy_move[1]) > 0.1) {
+            final_move = joy_move;
+        } else if (Math.abs(key_move[0]) > 0.1 || Math.abs(key_move[1]) > 0.1) {
+            final_move = key_move;
+        }
+        actions.push(['movement', final_move]);
+
+        // Camera
+        const camera_delta = this.camera_area.handle_input(mousePos, mousePressed, this.lookPathTracker);
+        if (camera_delta) {
+            actions.push(['camera_look', camera_delta]);
+        }
+        actions.push(['camera_drag_state', mousePressed]);
+        
+        return actions;
+    }
+
+    process_keyboard_shortcuts(keys) {
+        const actions = [];
+        if (keys[Keys.K_SPACE]) actions.push(['jump_keyboard', true]);
+        else actions.push(['jump_keyboard', false]);
+        
+        // These are handled by edge detection in ActionHandler now
+        // if (keys[Keys.K_e]) actions.push(['inventory_pressed', true]); 
+        // if (keys[Keys.K_q]) actions.push(['drop_item_pressed', true]);
+        // etc...
+        return actions;
+    }
+
+    update() {
+        // For animations or time-based updates
+    }
+    
+    draw() {
+        // Clear screen
+        this.surface.ctx.fillStyle = toCssColor(COLORS.DARK_GRAY);
+        this.surface.ctx.fillRect(0, 0, this.surface.width, this.surface.height);
+        
+        // Draw all elements
+        for (const el of Object.values(this.elements)) {
+            el.draw(this.surface, this.font);
+        }
+        
+        // Draw Status
+        document.getElementById('connection-status').textContent = this.state.connected ? 'Connected' : 'Disconnected';
+        document.getElementById('connection-status').style.color = toCssColor(this.state.connected ? COLORS.CONNECTION_STATUS_OK : COLORS.CONNECTION_STATUS_FAIL);
+        document.getElementById('mode-status').textContent = this.state.mode.toUpperCase();
+    }
+}
+// =======================================================================
+// === END_OF: ui_manager.py
+// =======================================================================
+
+
+// =======================================================================
+// === START_OF: action_handler.py
+// =======================================================================
+
+class ActionHandler {
+    constructor(controller_state, mode_strategy, controller) {
+        this.state = controller_state;
+        this.strategy = mode_strategy;
+        this.controller = controller;
+        this._last_jump_state = false;
+
+        this._action_handlers = {
+            "movement": (v) => v && this.handle_movement(v[0], v[1]),
+            "camera_look": (v) => v && this.handle_camera_look(v[0], v[1]),
+            "camera_drag_state": (v) => this.controller._handle_camera_drag_state(v),
+            "left_click": (v) => this.handle_left_click(v),
+            "right_click": (v) => this.handle_right_click(v),
+            "jump": (v) => this._handle_jump_action(v),
+            "jump_keyboard": (v) => this._handle_jump_action(v),
+            "sneak_toggled": (v) => this.handle_sneak(v),
+            "sprint_toggled": (v) => this.handle_sprint(v),
+            "inventory_pressed": (_) => this.handle_inventory(),
+            "drop_item_pressed": (_) => this.handle_drop_item(),
+            "swap_hands_pressed": (_) => this.handle_swap_hands(),
+            "hotbar_slot_pressed": (v) => this.handle_hotbar_slot(v),
+        };
+    }
+
+    _handle_jump_action(state) {
+        if (state !== this._last_jump_state) {
+            this.handle_jump(state);
+            this._last_jump_state = state;
+        }
+    }
+
+    _calculate_duration(start_time) {
+        if (!start_time) return "medium";
+        const duration_ms = Date.now() - start_time;
+        if (duration_ms < 150) return "very_short";
+        if (duration_ms < 750) return "short";
+        if (duration_ms < 1500) return "medium";
+        if (duration_ms < 3500) return "long";
+        if (duration_ms < 7500) return "very_long";
+        return "very_very_long";
+    }
+
+    _handle_timed_action(action_name, pressed, pygame_down_cmd, pygame_up_cmd, mcp_tool, mcp_params_func = null) {
+        const state = this.state.action_states[action_name];
+        if (pressed && !state.active) {
+            if (this.state.enable_logging) console.log(`${action_name.toUpperCase()} DOWN`);
+            state.start_time = Date.now();
+            state.active = true;
+        } else if (!pressed && state.active) {
+            if (this.state.enable_logging) console.log(`${action_name.toUpperCase()} UP`);
+            const duration = this._calculate_duration(state.start_time);
+            state.start_time = null;
+
+            const kwargs = mcp_params_func ? mcp_params_func(duration) : {};
+            this.strategy.handle_timed_action(mcp_tool, duration, pygame_down_cmd, pygame_up_cmd, kwargs);
+            state.active = false;
+        }
+    }
+
+    _handle_toggle_action(action_name, toggled, pygame_control, mcp_tool) {
+        const state = this.state.action_states[action_name];
+        if (toggled !== state.active) {
+            this.strategy.handle_toggle_action(mcp_tool, toggled, pygame_control);
+            state.active = toggled;
+        }
+    }
+
+    _detect_key_edge(key_name, current_state) {
+        const last_state = this.state.last_key_states[key_name] || false;
+        this.state.last_key_states[key_name] = current_state;
+        const just_pressed = current_state && !last_state;
+        const just_released = !current_state && last_state;
+        return [just_pressed, just_released];
+    }
+
+    handle_movement(x, y) {
+        const movement_x = x;
+        const movement_z = y;
+        if (Math.abs(movement_x - this.state.last_movement[0]) > 0.1 || Math.abs(movement_z - this.state.last_movement[1]) > 0.1) {
+            this.strategy.handle_movement(movement_x, movement_z);
+            this.state.last_movement = [movement_x, movement_z];
+        }
+    }
+
+    handle_camera_look(delta_x, delta_y) {
+        if (delta_x !== 0 || delta_y !== 0) {
+            const scaled_x = delta_x * 2;
+            const scaled_y = delta_y * 2;
+            
+            // In browser, look path tracker is handled by its own input handler
+            // this.controller.look_path_tracker.add_movement(scaled_x, scaled_y);
+            
+            if (this.state.mode === "pygame") {
+                const command = { type: "look", movementX: scaled_x, movementY: scaled_y };
+                this.controller.send_command_sync(command);
+            }
+        }
+    }
+
+    handle_left_click(pressed) {
+        this._handle_timed_action(
+            "left_click",
+            pressed,
+            { type: "leftDown" },
+            { type: "leftUp" },
+            "leftClick"
+        );
+    }
+
+    handle_right_click(pressed) {
+        this._handle_timed_action(
+            "right_click",
+            pressed,
+            { type: "rightDown" },
+            { type: "rightUp" },
+            "rightClick"
+        );
+    }
+
+    handle_jump(pressed) {
+        this._handle_timed_action(
+            "jump",
+            pressed,
+            { type: "control", control: "jump", state: true },
+            { type: "control", control: "jump", state: false },
+            "jump"
+        );
+    }
+
+    handle_sneak(toggled) {
+        this._handle_toggle_action("sneak", toggled, "sneak", "sneak");
+    }
+
+    handle_sprint(toggled) {
+        this._handle_toggle_action("sprint", toggled, "sprint", "sprint");
+    }
+
+    handle_inventory() {
+        this.state.inventory_open = !this.state.inventory_open;
+        if (this.state.enable_logging) {
+            console.log(`INVENTORY ${this.state.inventory_open ? 'OPENED' : 'CLOSED'}`);
+        }
+        this.strategy.handle_simple_action("toggleInventory", { type: "inventory" });
+    }
+
+    handle_hotbar_slot(slot) {
+        if (slot >= 0 && slot <= 8 && slot !== this.state.last_hotbar_slot) {
+            if (this.state.enable_logging) console.log(`HOTBAR SLOT ${slot + 1}`);
+            this.strategy.handle_simple_action(
+                "setHotbarSlot",
+                { type: "setHotbarSlot", slot: slot },
+                { slot }
+            );
+            this.state.current_hotbar_slot = slot;
+            this.state.last_hotbar_slot = slot;
+        }
+    }
+
+    handle_drop_item() {
+        if (this.state.enable_logging) console.log("DROP ITEM");
+        this.strategy.handle_simple_action(
+            "dropItem",
+            { type: "dropItem", amount: 1 },
+            { amount: 1 }
+        );
+    }
+
+    handle_swap_hands() {
+        if (this.state.enable_logging) console.log("SWAP HANDS");
+        this.strategy.handle_simple_action(
+            "swapHands",
+            { type: "swapHands" }
+        );
+    }
+
+    process_actions(actions) {
+        for (const [action_name, value] of actions) {
+            const handler = this._action_handlers[action_name];
+            if (handler) {
+                handler(value);
+            } else if (action_name && this.state.enable_logging) {
+                console.warn(`Warning: No handler for action '${action_name}'`);
+            }
+        }
+    }
+
+    process_edge_detections(keys_pressed) {
+        // Hotbar slots 1-9
+        for (let i = 0; i < 9; i++) {
+            const key_name = `hotbar_${i}`;
+            const key_code = Keys[`K_${i + 1}`];
+            const [just_pressed] = this._detect_key_edge(key_name, keys_pressed[key_code]);
+            if (just_pressed) this.handle_hotbar_slot(i);
+        }
+
+        // Other keys
+        const key_map = {
+            'drop_item': { key: Keys.K_q, handler: this.handle_drop_item },
+            'swap_hands': { key: Keys.K_f, handler: this.handle_swap_hands },
+            'inventory': { key: Keys.K_e, handler: this.handle_inventory },
+        };
+        for (const [name, { key, handler }] of Object.entries(key_map)) {
+            const [just_pressed] = this._detect_key_edge(name, keys_pressed[key]);
+            if (just_pressed) handler.call(this);
+        }
+    }
+
+    _log_mcp_command(tool, parameters) {
+        if (this.state.enable_logging) {
+            const mcp_command = { tool, parameters };
+            console.log(`LOGGED: ${JSON.stringify(mcp_command)}`);
+        }
+    }
+}
+// =======================================================================
+// === END_OF: action_handler.py
+// =======================================================================
+
+
+// =======================================================================
+// === START_OF: mode_strategy.py
+// =======================================================================
+
+class ModeStrategy {
+    constructor(controller) {
+        this.controller = controller;
+    }
+    handle_movement(x, z) { throw new Error("Not implemented"); }
+    handle_timed_action(action_name, duration, pygame_down_cmd, pygame_up_cmd, kwargs) { throw new Error("Not implemented"); }
+    handle_toggle_action(action_name, state, pygame_control) { throw new Error("Not implemented"); }
+    handle_simple_action(action_name, pygame_cmd, params) { throw new Error("Not implemented"); }
+    connect() { throw new Error("Not implemented"); }
+    process_continuous_state(mouse_pos, mouse_pressed, keys_pressed) { throw new Error("Not implemented"); }
+}
+
+class MCPModeStrategy extends ModeStrategy {
+    // A basic implementation for MCP mode, which focuses on converting to MCP format.
+    constructor(controller) {
+        super(controller);
+        console.log("🔧 MCPModeStrategy: Initializing in MCP mode.");
+    }
+    
+    _execute(mcp_command) {
+        if (this.controller.mcp_executor) {
+            this.controller.mcp_executor(mcp_command);
+        } else if (this.controller.state.enable_logging) {
+            console.log(`MCP EXECUTE (no executor): ${JSON.stringify(mcp_command)}`);
+        }
+    }
+
+    handle_movement(x, z) {
+        const mcp_command = ActionConverter._convert_move_action({x, z});
+        if(mcp_command) this._execute(mcp_command);
+    }
+    
+    handle_timed_action(action_name, duration, pygame_down_cmd, pygame_up_cmd, kwargs) {
+        const params = { duration, ...kwargs };
+        const mcp_command = convert_to_mcp_format(action_name, params);
+        if (mcp_command) this._execute(mcp_command);
+    }
+
+    handle_toggle_action(action_name, state, pygame_control) {
+        const mcp_command = convert_to_mcp_format(action_name, { state });
+        if (mcp_command) this._execute(mcp_command);
+    }
+
+    handle_simple_action(action_name, pygame_cmd, params = {}) {
+        const mcp_command = convert_to_mcp_format(action_name, params);
+        if (mcp_command) this._execute(mcp_command);
+    }
+    
+    connect() {
+        console.log("MCP mode does not require a WebSocket connection.");
+        this.controller.state.connected = true; // Mark as "connected" conceptually
+    }
+    
+    process_continuous_state(mouse_pos, mouse_pressed, keys_pressed) {
+        // MCP mode is event-driven, less reliant on continuous state processing.
+    }
+}
+
+class PygameModeStrategy extends ModeStrategy {
+    constructor(controller, mcp_server, data_collection_enabled) {
+        super(controller);
+        this.was_moving = false;
+        this.data_collection_enabled = data_collection_enabled;
+        this.mcp_server = mcp_server;
+        this.traceLog = [];
+        this.trajectory_id = `trajectory_${Math.floor(Date.now() / 1000)}`;
+
+        if (this.mcp_server && this.data_collection_enabled) {
+            console.log("🔧 PygameModeStrategy: Initializing MOCK + OBSERVE mode");
+            document.getElementById('data-collection-log-container').style.display = 'block';
+        } else {
+            console.log("🔧 PygameModeStrategy: Initializing in PURE WebSocket mode.");
+        }
+    }
+
+    handle_movement(x, z) {
+        const command = { type: "move", x, z };
+        this.controller.send_command_sync(command);
+
+        if (this.controller.state.enable_logging && (Math.abs(x) > 0.1 || Math.abs(z) > 0.1)) {
+            const magnitude = Math.hypot(x, z);
+            const duration = Math.floor(magnitude * ActionConverter.MAGNITUDE_DURATION_SCALE);
+            this.controller.action_handler._log_mcp_command("walk", { duration });
+        }
+    }
+
+    handle_timed_action(action_name, duration, pygame_down_cmd, pygame_up_cmd, kwargs) {
+        const commands_sent = [];
+        if (pygame_down_cmd) {
+            this.controller.send_command_sync(pygame_down_cmd);
+            commands_sent.push(pygame_down_cmd);
+        }
+        if (pygame_up_cmd) {
+            this.controller.send_command_sync(pygame_up_cmd);
+            commands_sent.push(pygame_up_cmd);
+        }
+
+        if (this.data_collection_enabled && this.mcp_server && commands_sent.length > 0) {
+            this._queue_parallel_mcp_execution(commands_sent, `Timed Action: ${action_name}`);
+        }
+        
+        const mcp_params = { duration, ...kwargs };
+        this.controller.action_handler._log_mcp_command(action_name, mcp_params);
+    }
+    
+    handle_toggle_action(action_name, state, pygame_control) {
+        if (pygame_control) {
+            const command = { type: "control", control: pygame_control, state };
+            this.controller.send_command_sync(command);
+            if (this.data_collection_enabled && this.mcp_server) {
+                this._queue_parallel_mcp_execution([command], `Toggle Action: ${action_name}`);
+            }
+        }
+        this.controller.action_handler._log_mcp_command(action_name, { state });
+    }
+
+    handle_simple_action(action_name, pygame_cmd, params = {}) {
+        if (pygame_cmd) {
+            this.controller.send_command_sync(pygame_cmd);
+            if (this.data_collection_enabled && this.mcp_server) {
+                this._queue_parallel_mcp_execution([pygame_cmd], `Simple Action: ${action_name}`);
+            }
+        }
+        this.controller.action_handler._log_mcp_command(action_name, params);
+    }
+
+    connect() {
+        this.controller.start_websocket_connection();
+    }
+    
+    process_continuous_state(mouse_pos, mouse_pressed, keys_pressed) {
+        const keyboard_move = this.controller.ui_manager.keyboard_movement.handle_keyboard(keys_pressed);
+        const joystick = this.controller.ui_manager.movement_joystick;
+        const joystick_move = [
+            (joystick.knob_x - joystick.center_x) / joystick.radius,
+            (joystick.knob_y - joystick.center_y) / joystick.radius
+        ];
+
+        let movement_x = 0.0, movement_z = 0.0;
+        if (Math.abs(joystick_move[0]) < 0.1 && Math.abs(joystick_move[1]) < 0.1) {
+            if (Math.abs(keyboard_move[0]) > 0.1 || Math.abs(keyboard_move[1]) > 0.1) {
+                [movement_x, movement_z] = keyboard_move;
+            }
+        } else {
+            [movement_x, movement_z] = joystick_move;
+        }
+
+        const is_moving = Math.abs(movement_x) > 0.1 || Math.abs(movement_z) > 0.1;
+        
+        if (is_moving) {
+            const command = { type: "move", x: movement_x, z: movement_z };
+            this.controller.send_command_sync(command);
+        } else if (this.was_moving) {
+             const command = { type: "move", x: 0.0, z: 0.0 };
+             this.controller.send_command_sync(command);
+        }
+        this.was_moving = is_moving;
+
+        if (this.data_collection_enabled) {
+            // In the original, this was more complex. Here, we simplify and just
+            // queue MCP execution for any significant movement at the end.
+            // A more faithful port would require a movement accumulator.
+        }
+    }
+    
+    _queue_parallel_mcp_execution(actions, task_context) {
+        if (!this.data_collection_enabled || !this.mcp_server) return;
+
+        const mcp_actions = ActionConverter.pygame_to_mcp_simple(actions);
+        this.logToDom(`🎭 Mock actions: ${mcp_actions.map(a => a.tool).join(', ')}`);
+        
+        // Use an async IIFE to call the async method from this sync context
+        (async () => {
+            await this._always_execute_getbotstatus(actions, mcp_actions, task_context);
+        })();
+    }
+
+    async _always_execute_getbotstatus(pygame_actions, mcp_actions, task_context) {
+        try {
+            const real_response = await this.mcp_server.execute_tool("getBotStatus", {});
+            
+            const tool_text = real_response.content[0].text;
+            const base64_string = real_response.content[1].data;
+            this.logToDom(`📊 getBotStatus result received.`);
+            
+            BrowserFileHandler.saveScreenshotFile(base64_string, this.trajectory_id, 'getBotStatus');
+            
+            const trace_data = `====\n` +
+                               `Context: ${task_context}\n` +
+                               `Observation:\n${tool_text}\n` +
+                               `Pygame Actions: ${JSON.stringify(pygame_actions)}\n` +
+                               `MCP Actions: ${JSON.stringify(mcp_actions)}\n` +
+                               `====\n\n`;
+
+            this.traceLog.push(trace_data);
+            this.logToDom("Trace data captured.");
+
+        } catch (e) {
+            this.logToDom(`❌ getBotStatus failed: ${e}`, 'error');
+            console.error(e);
+        }
+    }
+
+    logToDom(message, type = 'info') {
+        const logArea = document.getElementById('data-collection-log');
+        if (!logArea) return;
+        const entry = document.createElement('div');
+        entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        if (type === 'error') entry.style.color = 'red';
+        logArea.appendChild(entry);
+        logArea.scrollTop = logArea.scrollHeight;
+    }
+}
+// =======================================================================
+// === END_OF: mode_strategy.py
+// =======================================================================
+
+
+// =======================================================================
+// === START_OF: main controller
+// =======================================================================
+
+class MinecraftController {
+    constructor(options = {}) {
+        this.state = new ControllerState(options);
+
+        const canvas = document.getElementById('main-canvas');
+        canvas.width = WINDOW_WIDTH;
+        canvas.height = WINDOW_HEIGHT;
+        this.surface = { 
+            ctx: canvas.getContext('2d'),
+            width: WINDOW_WIDTH,
+            height: WINDOW_HEIGHT,
+        };
+        this.surface.draw = new PygameDraw(this.surface.ctx);
+        this.input = new InputManager(canvas);
+
+        this.look_path_tracker = new LookPathTracker(
+            this.state.sensitivity,
+            this.state.enable_logging,
+            this.state.mode,
+        );
+
+        if (this.state.mode === "pygame" && this.state.data_collection_enabled) {
+            this.state.mcp_server = this._create_mcp_server_for_data_collection();
+        }
+        
+        // The original used a callback for MCP mode. We'll simplify this.
+        this.look_path_tracker.set_execution_callback((mcp_command) => {
+            if (this.state.mode === 'mcp') {
+                this.execute_mcp_action(mcp_command);
+            } else if (this.state.mode === 'pygame' && this.state.data_collection_enabled) {
+                this._execute_pygame_mcp_action(mcp_command);
+            }
+        });
+
+        if (this.state.mode === "pygame") {
+            this.strategy = new PygameModeStrategy(
+                this, this.state.mcp_server, this.state.data_collection_enabled
+            );
+        } else if (this.state.mode === "mcp") {
+            this.strategy = new MCPModeStrategy(this);
+        } else {
+            throw new Error(`Unknown mode: ${this.state.mode}`);
+        }
+
+        this.ui_manager = new UIManager(this.surface, this.state, this.look_path_tracker);
+        this.action_handler = new ActionHandler(this.state, this.strategy, this);
+        
+        if (this.state.data_collection_enabled) {
+            console.log("🎬 Data collection enabled! Hotkeys: F5=Start session (mock)");
+            const downloadBtn = document.getElementById('download-log-btn');
+            downloadBtn.onclick = () => {
+                BrowserFileHandler.downloadLog(this.strategy.traceLog.join('\n'), 'trace.txt');
+            };
+        }
+    }
+
+    _create_mcp_server_for_data_collection() {
+        console.log("🔧 Creating MOCK MCP server for data collection in browser.");
+        return {
+            execute_tool: async (toolName, params) => {
+                console.log(`MOCK MCP SERVER: execute_tool(${toolName}) called`);
+                if (toolName === "getBotStatus") {
+                    await new Promise(resolve => setTimeout(resolve, 200)); // Simulate network latency
+                    // Return a mock response
+                    return {
+                        content: [
+                            { type: "text", text: "Mock observation: You are standing in a plains biome. It is daytime. Your health is 20/20." },
+                            { type: "image", data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=" } // 1x1 black pixel PNG
+                        ]
+                    };
+                }
+                return { content: [{ type: "text", text: "Mock response for " + toolName }] };
+            }
+        };
+    }
+
+    _handle_camera_drag_state(mouse_pressed) {
+        const camera_is_clicking = this.ui_manager.camera_area.is_touching && mouse_pressed;
+        const prev_clicking = this.state.camera_was_clicking;
+
+        if (camera_is_clicking && !prev_clicking) {
+            if (this.state.enable_logging) console.log("🖱️ Mouse pressed in camera area - starting drag tracking");
+            this.look_path_tracker.start_mouse_tracking();
+            this.state.camera_was_clicking = true;
+        } else if (!mouse_pressed && prev_clicking) {
+            if (this.state.enable_logging) console.log("🖱️ Mouse released - ending drag tracking");
+            this.look_path_tracker.stop_mouse_tracking();
+            this.state.camera_was_clicking = false;
+        }
+    }
+    
+    start_websocket_connection() {
+        if (this.state.websocket) {
+            this.state.websocket.close();
+        }
+        const uri = "ws://localhost:8081";
+        console.log(`Connecting to ${uri}...`);
+        
+        this.state.websocket = new WebSocket(uri);
+
+        this.state.websocket.onopen = (event) => {
+            console.log("Connected to Minecraft Web Client!");
+            this.state.connected = true;
+            const init_message = { init: this.state.mode };
+            this.state.websocket.send(JSON.stringify(init_message));
+        };
+        
+        this.state.websocket.onclose = (event) => {
+            console.log("Disconnected from Minecraft Web Client.");
+            this.state.connected = false;
+        };
+
+        this.state.websocket.onerror = (event) => {
+            console.error("WebSocket error:", event);
+            this.state.connected = false;
+        };
+    }
+
+    send_command_sync(command) {
+        if (this.state.websocket && this.state.connected) {
+            try {
+                this.state.websocket.send(JSON.stringify(command));
+            } catch (e) {
+                console.error("Error sending command:", e);
+                this.state.connected = false;
+            }
+        }
+    }
+    
+    execute_mcp_action(mcp_command) {
+        console.log(`🎮 Executing: ${mcp_command.tool}(${JSON.stringify(mcp_command.parameters)})`);
+        // In a real MCP setup, this would send to a server. Here we just log it.
+    }
+    
+     _execute_pygame_mcp_action(mcp_command) {
+        if (!this.strategy._queue_parallel_mcp_execution) return;
+        const action = { type: mcp_command.tool, ...mcp_command.parameters };
+        this.strategy._queue_parallel_mcp_execution(
+            [action], `Camera drag: ${mcp_command.tool}`
+        );
+    }
+    
+    _process_frame(timestamp) {
+        const events = []; // Can be populated if specific event objects are needed
+        
+        const mouse_pos = this.input.getMousePos();
+        const mouse_pressed = this.input.getMousePressed()[0];
+        const keys_pressed = this.input.getPressed();
+
+        const event_actions = this.ui_manager.process_events(events);
+        const ui_actions = this.ui_manager.process_inputs(mouse_pos, mouse_pressed, keys_pressed);
+        const keyboard_actions = this.ui_manager.process_keyboard_shortcuts(keys_pressed);
+        
+        this.action_handler.process_actions(
+            [...event_actions, ...ui_actions, ...keyboard_actions]
+        );
+        
+        this.strategy.process_continuous_state(mouse_pos, mouse_pressed, keys_pressed);
+        
+        this.action_handler.process_edge_detections(keys_pressed);
+        
+        this.ui_manager.update();
+        this.ui_manager.draw();
+
+        if (this.state.running) {
+            requestAnimationFrame((t) => this._process_frame(t));
+        }
+    }
+
+    run() {
+        console.log(`Starting Minecraft Controller in ${this.state.mode.toUpperCase()} mode...`);
+        this.strategy.connect();
+        this.state.running = true;
+        requestAnimationFrame((t) => this._process_frame(t));
+    }
+}
+
+// =======================================================================
+// === END_OF: main controller
+// =======================================================================
+
+
+// --- Application Entry Point ---
+window.addEventListener('DOMContentLoaded', () => {
+    // Example: Start in Pygame mode with data collection enabled
+    const controller = new MinecraftController({
+        mode: 'pygame',
+        enable_logging: true,
+        data_collection_enabled: true,
+    });
+    controller.run();
+});
+
+</script>
 </body>
 </html>

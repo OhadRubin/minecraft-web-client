@@ -1,14 +1,65 @@
-// === START_OF: action_converter.py
+// === START_OF: action_converter.ts
 // =======================================================================
+
+// Type definitions for pygame actions and MCP tools
+interface PygameAction {
+    type: string;
+    x?: number;
+    z?: number;
+    movementX?: number;
+    movementY?: number;
+    button?: number;
+    action?: string;
+    duration?: number;
+    [key: string]: any;
+}
+
+interface MCPToolCall {
+    tool: string;
+    parameters: Record<string, any>;
+}
+
+interface OpenAIToolCall {
+    id: string;
+    type: "function";
+    function: {
+        name: string;
+        arguments: string;
+    };
+}
+
+interface LookActionData {
+    movementX?: number;
+    movementY?: number;
+}
+
+interface LegacyActionData {
+    look?: LookActionData;
+    [key: string]: any;
+}
+
+interface ConvertToMCPParams {
+    duration?: string | number;
+    slot?: number;
+    state?: boolean;
+    amount?: number;
+    [key: string]: any;
+}
+
+type PygameActionInput = PygameAction | string;
 
 class ActionConverter {
     // Shared constants - single source of truth
-    static MOVEMENT_THRESHOLD = 0.1;
-    static LOOK_THRESHOLD = 0.2;
-    static SENSITIVITY = 5.0;
-    static MAGNITUDE_DURATION_SCALE = 2000;
+    static readonly MOVEMENT_THRESHOLD: number = 0.1;
+    static readonly LOOK_THRESHOLD: number = 0.2;
+    static readonly SENSITIVITY: number = 5.0;
+    static readonly MAGNITUDE_DURATION_SCALE: number = 2000;
 
-    static convert_pygame_action(action) {
+    static convert_pygame_action(action: PygameActionInput): MCPToolCall | null {
+        if (typeof action === 'string') {
+            return ActionConverter._convert_string_action(action);
+        }
+
         if (typeof action !== 'object' || action === null) {
             return null;
         }
@@ -31,7 +82,7 @@ class ActionConverter {
         return null;
     }
 
-    static _convert_move_action(action) {
+    static _convert_move_action(action: PygameAction): MCPToolCall | null {
         const x = action.x ?? 0;
         const z = action.z ?? 0;
 
@@ -43,7 +94,7 @@ class ActionConverter {
         return null;
     }
 
-    static _convert_look_action(action) {
+    static _convert_look_action(action: PygameAction): MCPToolCall | null {
         const movementX = action.movementX ?? 0;
         const movementY = action.movementY ?? 0;
 
@@ -63,16 +114,16 @@ class ActionConverter {
         return null;
     }
 
-    static _convert_left_click_action(action) {
+    static _convert_left_click_action(action: PygameAction): MCPToolCall {
         return { tool: "leftClick", parameters: { duration: "short" } };
     }
 
-    static _convert_right_click_action(action) {
+    static _convert_right_click_action(action: PygameAction): MCPToolCall {
         return { tool: "rightClick", parameters: { duration: "short" } };
     }
 
-    static convert_pygame_actions_bulk(actions) {
-        const mcp_actions = [];
+    static convert_pygame_actions_bulk(actions: PygameActionInput[]): MCPToolCall[] {
+        const mcp_actions: MCPToolCall[] = [];
         for (const action of actions) {
             if (typeof action === 'object' && action !== null) {
                 const converted = ActionConverter.convert_pygame_action(action);
@@ -89,15 +140,15 @@ class ActionConverter {
         return mcp_actions;
     }
 
-    static _convert_string_action(action_str) {
+    static _convert_string_action(action_str: string): MCPToolCall | null {
         try {
             if (action_str.includes('"move":')) {
                 return { tool: "walk", parameters: { duration: 1000 } };
             } else if (action_str.includes('"look":')) {
-                const action_data = JSON.parse(action_str);
-                if ("look" in action_data) {
+                const action_data: LegacyActionData = JSON.parse(action_str);
+                if ("look" in action_data && action_data.look) {
                     const look_data = action_data.look;
-                    const dict_action = {
+                    const dict_action: PygameAction = {
                         type: "look",
                         movementX: look_data.movementX ?? 0,
                         movementY: look_data.movementY ?? 0,
@@ -111,12 +162,12 @@ class ActionConverter {
         return null;
     }
 
-    static to_simple_format(conversions) {
+    static to_simple_format(conversions: MCPToolCall[]): MCPToolCall[] {
         return conversions; // Already in the correct format
     }
 
-    static to_openai_format(conversions, sequence_id) {
-        const tool_calls = [];
+    static to_openai_format(conversions: MCPToolCall[], sequence_id: string | number): OpenAIToolCall[] {
+        const tool_calls: OpenAIToolCall[] = [];
         for (let i = 0; i < conversions.length; i++) {
             const conversion = conversions[i];
             if (conversion) {
@@ -133,19 +184,19 @@ class ActionConverter {
         return tool_calls;
     }
 
-    static pygame_to_mcp_simple(actions) {
+    static pygame_to_mcp_simple(actions: PygameActionInput[]): MCPToolCall[] {
         const conversions = ActionConverter.convert_pygame_actions_bulk(actions);
         return ActionConverter.to_simple_format(conversions);
     }
 
-    static pygame_to_openai_tools(actions, sequence_id) {
+    static pygame_to_openai_tools(actions: PygameActionInput[], sequence_id: string | number): OpenAIToolCall[] {
         const conversions = ActionConverter.convert_pygame_actions_bulk(actions);
         return ActionConverter.to_openai_format(conversions, sequence_id);
     }
 }
 
 // This function seems separate from the class, so we port it as a standalone function.
-function convert_to_mcp_format(command_type, params) {
+function convert_to_mcp_format(command_type: string, params: ConvertToMCPParams = {}): MCPToolCall | null {
     switch (command_type) {
         case "left_click":
         case "leftClick":
@@ -176,4 +227,5 @@ function convert_to_mcp_format(command_type, params) {
 
 // =======================================================================
 export { ActionConverter, convert_to_mcp_format };
-// === END_OF: action_converter.py
+export type { PygameAction, MCPToolCall, OpenAIToolCall, PygameActionInput, ConvertToMCPParams };
+// === END_OF: action_converter.ts
