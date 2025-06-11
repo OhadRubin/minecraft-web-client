@@ -4,17 +4,24 @@
     "description": "Gamepad controller interface for Minecraft web client",
     "main": "dist/GamepadController.js",
     "scripts": {
-        "build": "tsc",
+        "build": "tsc && npm run build-react",
+        "build-react": "esbuild ImageGallery.tsx --bundle --outfile=dist/ImageGallery.js --format=esm --jsx=automatic --external:react --external:react-dom --external:react-image-gallery",
         "watch": "tsc --watch",
+        "watch-react": "esbuild ImageGallery.tsx --bundle --outfile=dist/ImageGallery.js --format=esm --jsx=automatic --external:react --external:react-dom --external:react-image-gallery --watch",
         "clean": "rm -rf dist",
         "start": "tsc --watch & python log_server.py",
         "serve": "python log_server.py"
     },
     "devDependencies": {
+        "@types/react": "^18.2.20",
+        "@types/react-dom": "^18.2.7",
         "typescript": "^5.0.0"
     },
     "dependencies": {
-        "@xterm/xterm": "^5.3.0"
+        "@xterm/xterm": "^5.3.0",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "react-image-gallery": "^1.4.0"
     },
     "type": "module"
 }

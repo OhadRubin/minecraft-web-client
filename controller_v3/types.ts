@@ -34,6 +34,14 @@ export interface GamepadJoystickCenterCommand {
   stickIndex: number;
 }
 
+export interface GetBotStatusCommand {
+  type: "getBotStatus";
+}
+
+export interface GetScreenshotCommand {
+  type: "getScreenshot";
+}
+
 export interface WebSocketInitMessage {
   init: "pygame";
 }
@@ -44,7 +52,9 @@ export type WebSocketCommand =
   | GamepadButtonPressDownCommand
   | GamepadButtonPressUpCommand
   | GamepadJoystickMoveCommand
-  | GamepadJoystickCenterCommand;
+  | GamepadJoystickCenterCommand
+  | GetBotStatusCommand
+  | GetScreenshotCommand;
 
 // ========================================
 // Position and Coordinate Types
@@ -499,4 +509,81 @@ export interface IGamepadJoystick {
   resetPosition(): void;
   draw(ctx: CanvasRenderingContext2D): void;
 }
+
+// ========================================
+// Bot Status and Screenshot Types
+// ========================================
+
+export interface BotStatusMessage {
+  type: "botStatus";
+  data: {
+    position: [number, number, number]; // [x, y, z]
+    yaw: number;
+    pitch: number;
+    health: number;
+    food: number;
+    selectedSlot: number;
+    biome: string;
+    dimension: string;
+    gameTime: number;
+    inventory: any[];
+    lookingAt?: {
+      name: string;
+      position: [number, number, number];
+      distance: number;
+    };
+    [key: string]: any; // Allow additional properties
+  };
+  timestamp: number;
+}
+
+export interface ScreenshotMessage {
+  type: "screenshot";
+  data: {
+    image: string; // base64 encoded image
+    timestamp: number;
+    width: number;
+    height: number;
+  };
+  timestamp: number;
+}
+
+export interface StoredScreenshot {
+  image: string; // base64 encoded
+  timestamp: number;
+  width: number;
+  height: number;
+  botStatus?: BotStatusMessage['data']; // Associated bot status if available
+}
+
+export interface BotStatusData {
+  position: [number, number, number];
+  yaw: number;
+  pitch: number;
+  health: number;
+  food: number;
+  selectedSlot: number;
+  biome: string;
+  dimension: string;
+  gameTime: number;
+  inventory: any[];
+  lookingAt?: {
+    name: string;
+    position: [number, number, number];
+    distance: number;
+  };
+  [key: string]: any;
+}
+
+export interface BotStatusMessage {
+  type: 'botStatus';
+  data: BotStatusData;
+  timestamp: number;
+}
+
+// ScreenshotMessage definition removed due to type conflicts
+
+export type WebSocketMessage = 
+  | BotStatusMessage
+  | { type: string; [key: string]: any };
 

@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gamepad Controller</title>
+    
+    <!-- Screenshot Gallery Styles -->
+    <link rel="stylesheet" href="dist/ScreenshotGallery.css">
+    
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -27,12 +31,34 @@
             margin-bottom: 20px;
             font-size: 16px;
             justify-content: center;
+            align-items: center;
         }
 
-        #websocket-status, #gamepad-status {
+        #websocket-status, #gamepad-status, #trigger-settings {
             padding: 10px 15px;
             border-radius: 5px;
             background-color: #ddd;
+        }
+
+        .trigger-control {
+            display: flex;
+            gap: 10px;
+            margin: 5px 0;
+            font-size: 12px;
+        }
+
+        .trigger-control label {
+            min-width: 80px;
+            display: flex;
+            align-items: center;
+        }
+
+        .trigger-control input {
+            width: 60px;
+            padding: 2px 4px;
+            font-size: 11px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
         }
 
         #websocket-status.connected {
@@ -103,37 +129,112 @@
             box-sizing: border-box;
         }
 
-        #controls {
-            position: fixed;
-            bottom: 10px;
-            left: 10px;
-            padding: 10px;
-            background-color: white;
-            border-radius: 5px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            font-size: 12px;
-            max-width: 250px;
+
+        /* Screenshot Gallery Styles */
+        .screenshot-gallery {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
         }
 
-        #controls h3 {
+        .screenshot-gallery .image-gallery {
+            flex: 1;
+            height: 100%;
+        }
+
+        .screenshot-gallery-empty {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .empty-state {
+            text-align: center;
+            color: #666;
+        }
+
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .empty-state h3 {
             margin: 0 0 10px 0;
-            font-size: 14px;
+            color: #333;
         }
 
-        .control-group {
-            margin: 5px 0;
+        .empty-state p {
+            margin: 0 0 15px 0;
+            color: #777;
         }
 
-        .control-group label {
-            display: inline-block;
-            width: 100px;
-            font-size: 11px;
+        .empty-features {
+            font-size: 12px;
+            color: #999;
         }
 
-        .control-group input {
-            width: 60px;
-            padding: 2px;
-            font-size: 11px;
+        .empty-features div {
+            margin: 3px 0;
+        }
+
+        /* Image Gallery Metadata Styles */
+        .screenshot-metadata {
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-top: 10px;
+        }
+
+        .metadata-row {
+            margin: 3px 0;
+            line-height: 1.4;
+        }
+
+        .thumbnail-metadata {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(0,0,0,0.8));
+            color: white;
+            padding: 5px;
+            font-size: 10px;
+            text-align: center;
+        }
+
+        .thumbnail-time {
+            font-weight: bold;
+        }
+
+        .thumbnail-position {
+            font-size: 9px;
+            opacity: 0.9;
+        }
+
+        .gallery-status {
+            text-align: center;
+            padding: 5px;
+            font-size: 12px;
+            color: #666;
+            background-color: #f8f9fa;
+            border-top: 1px solid #ddd;
+        }
+
+        /* Override image gallery default styles to fit our layout */
+        .image-gallery-slide img {
+            max-height: 300px !important;
+        }
+
+        .image-gallery-thumbnails-wrapper {
+            max-height: 80px !important;
+        }
+
+        .image-gallery-thumbnail {
+            width: 80px !important;
+            height: 60px !important;
         }
     </style>
 </head>
@@ -143,6 +244,17 @@
     <div id="status-container">
         <div id="websocket-status" class="disconnected">WebSocket: Disconnected</div>
         <div id="gamepad-status">Physical Gamepads: 0</div>
+        <div id="trigger-settings">
+            <strong>Trigger Settings</strong>
+            <div class="trigger-control">
+                <label for="trigger-duration">Duration (ms):</label>
+                <input type="number" id="trigger-duration" min="1" max="1000" value="50">
+            </div>
+            <div class="trigger-control">
+                <label for="trigger-interval">Interval (ms):</label>
+                <input type="number" id="trigger-interval" min="1" max="1000" value="16">
+            </div>
+        </div>
     </div>
 
     <div class="app-grid">
@@ -157,27 +269,16 @@
         </div>
         
         <div class="grid-section">
-            <div class="section-title">Terminal 1</div>
-            <textarea id="terminal1" class="terminal" readonly placeholder="Terminal 1 - Ready for commands..."></textarea>
+            <div class="section-title">Bot Status (Event-Driven)</div>
+            <textarea id="terminal1" class="terminal" readonly placeholder="📊 Bot Status - Event Driven - Waiting for events..."></textarea>
         </div>
         
         <div class="grid-section">
-            <div class="section-title">Terminal 2</div>
-            <textarea id="terminal2" class="terminal" readonly placeholder="Terminal 2 - Ready for commands..."></textarea>
+            <div class="section-title">Screenshot Gallery</div>
+            <div id="react-image-gallery-root" style="height: calc(100% - 30px);"></div>
         </div>
         </div>
 
-    <div id="controls">
-        <h3>Trigger Settings</h3>
-        <div class="control-group">
-            <label for="trigger-duration">Duration (ms):</label>
-            <input type="number" id="trigger-duration" min="1" max="1000" value="50">
-        </div>
-        <div class="control-group">
-            <label for="trigger-interval">Interval (ms):</label>
-            <input type="number" id="trigger-interval" min="1" max="1000" value="16">
-        </div>
-    </div>
 
     <script type="module">
         import { GamepadController } from './dist/GamepadController.js';
@@ -185,11 +286,9 @@
                 // Initialize terminals
         const terminal = document.getElementById('terminal');
                 const terminal1=document.getElementById('terminal1');
-                const terminal2=document.getElementById('terminal2');
             
         terminal.value = '🎮 WebSocket Commands Log initialized\n' + '='.repeat(50) + '\n';
-                terminal1.value='📟 Terminal 1 initialized\n'+'='.repeat(50)+'\n';
-                terminal2.value='📟 Terminal 2 initialized\n'+'='.repeat(50)+'\n';
+                terminal1.value='📊 Bot Status - Event Driven\n'+'='.repeat(50)+'\n';
         
                 // Make terminals globally accessible for logging
         window.gamepadTerminal = {
@@ -201,18 +300,56 @@
                 terminal1.value+=text+'\n';
                 terminal1.scrollTop=terminal1.scrollHeight;
             },
+            clearTerminal1: function() {
+                terminal1.value = '📊 Bot Status - Event Driven\n' + '='.repeat(50) + '\n';
+            },
             writeToTerminal2: function (text) {
-                terminal2.value+=text+'\n';
-                terminal2.scrollTop=terminal2.scrollHeight;
+                // Legacy compatibility - now handled by React component
+                console.log('Terminal2 (now React Gallery):', text);
+                
+                // Try to update React gallery with screenshot data if applicable
+                if (window.updateScreenshotGallery && typeof text === 'string' && text.includes('screenshot')) {
+                    window.updateScreenshotGallery(text);
+                }
             }
         };
         
         // Initialize the gamepad controller
         const controller = new GamepadController('canvas', 'ws://localhost:8081');
         
+        // Load and mount React Screenshot Gallery
+        import('./dist/ScreenshotGallery.js').then(module => {
+            console.log('📦 ScreenshotGallery module loaded:', module);
+            
+            // The bundled component should expose a mount function
+            if (module.mountScreenshotGallery) {
+                const galleryRoot = document.getElementById('react-image-gallery-root');
+                if (galleryRoot) {
+                    module.mountScreenshotGallery(galleryRoot);
+                    
+                    // Screenshot gallery will be updated when new screenshots arrive via WebSocket events
+                    console.log("📸 Screenshot gallery mounted and ready for updates");
+                }
+            } else {
+                console.error('❌ mountScreenshotGallery function not found in module');
+            }
+        }).catch(error => {
+            console.error('Failed to load ScreenshotGallery:', error);
+            // Fallback: simple display
+            const galleryRoot = document.getElementById('react-image-gallery-root');
+            if (galleryRoot) {
+                galleryRoot.innerHTML = '<div style="padding: 20px; text-align: center;">📸 Screenshot Gallery Loading...</div>';
+            }
+        });
+        
         // Handle cleanup on page unload
         window.addEventListener('beforeunload', () => {
             controller.destroy();
+            // Unmount React component
+            const galleryRoot = document.getElementById('react-image-gallery-root');
+            if (galleryRoot) {
+                ReactDOM.unmountComponentAtNode(galleryRoot);
+            }
         });
     </script>
 </body>

@@ -173,6 +173,8 @@ export class GamepadController {
   // Track joysticks currently being dragged via visual interface (to prevent gamepad override)
   private visuallyDraggedJoysticks: Set<number> = new Set();
   
+  // Auto-refresh removed - using event-driven approach
+  
   // Button mapping (Xbox controller standard)
   private readonly buttonMapping: ButtonMapping = {
     0: 0, // A button
@@ -228,7 +230,7 @@ export class GamepadController {
       draggingJoystick: null,
       buttonIntervals: new Map<number, boolean>(),
       settings: {
-        deadzone: 0.15,
+        deadzone: 0.08,
         triggerDuration: 50,
         triggerInterval: 16
       }
@@ -244,6 +246,7 @@ export class GamepadController {
     this.setupGamepadLayout();
     this.setupEventHandlers();
     this.setupTriggerControls();
+    // setupAutoRefreshControls() - disabled, using event-driven approach
     
     // Connect to WebSocket
     await this.wsManager.connect();
@@ -308,6 +311,8 @@ export class GamepadController {
     window.addEventListener('beforeunload', this.handleBeforeUnload.bind(this));
   }
 
+  // setupAutoRefreshControls() method removed - using event-driven approach
+
   /**
    * Setup trigger control input listeners
    */
@@ -348,6 +353,8 @@ export class GamepadController {
       y: (e.clientY - rect.top) * (this.canvas.height / rect.height)
     };
   }
+
+  // Auto-refresh methods removed - using event-driven approach instead
 
   /**
    * Handle mouse down events
@@ -574,7 +581,13 @@ export class GamepadController {
    * Apply deadzone to analog values
    */
   private applyDeadzone(value: number): number {
-    return Math.abs(value) < this.state.settings.deadzone ? 0.0 : value;
+    if (Math.abs(value) < this.state.settings.deadzone) {
+      return 0.0;
+    }
+    // Scale the value to remove deadzone effect
+    const sign = value >= 0 ? 1 : -1;
+    const scaledValue = (Math.abs(value) - this.state.settings.deadzone) / (1.0 - this.state.settings.deadzone);
+    return sign * scaledValue;
   }
 
   /**
@@ -624,9 +637,16 @@ export class GamepadController {
 
       // Check analog sticks
       if (gamepad.axes.length >= 4) {
-        // Left stick (axes 0, 1)
-        const leftX = this.applyDeadzone(gamepad.axes[0]);
-        const leftY = this.applyDeadzone(gamepad.axes[1]);
+        // Left stick (axes 0, 1) - Debug raw values
+        const rawLeftX = gamepad.axes[0];
+        const rawLeftY = gamepad.axes[1];
+        const leftX = this.applyDeadzone(rawLeftX);
+        const leftY = this.applyDeadzone(rawLeftY);
+
+        // Debug log for physical gamepad input
+        if (Math.abs(rawLeftX) > 0.05 || Math.abs(rawLeftY) > 0.05) {
+          console.log(`🎮 Physical Left Stick - Raw: (${rawLeftX.toFixed(3)}, ${rawLeftY.toFixed(3)}) → Deadzone: (${leftX.toFixed(3)}, ${leftY.toFixed(3)})`);
+        }
 
         if (this.state.joysticks[0] && !this.visuallyDraggedJoysticks.has(0)) {
           const joystick = this.state.joysticks[0];
@@ -639,6 +659,7 @@ export class GamepadController {
           joystick.stickY = joystick.centerY + (leftY * joystick.maxDistance);
 
           if (Math.abs(prevX - leftX) > 0.01 || Math.abs(prevY - leftY) > 0.01) {
+            console.log(`🎮 Sending physical gamepad command: leftX=${leftX.toFixed(3)}, leftY=${leftY.toFixed(3)}`);
             await this.wsManager.sendCommand({
               type: "gamepadJoystickMove",
               stickIndex: 0,
@@ -679,6 +700,7 @@ export class GamepadController {
    * Update status display
    */
   private updateStatus(): void {
+    // updateAutoRefreshStatus() - disabled, using event-driven approach
     const wsStatus = document.getElementById('websocket-status') as StatusElement;
     const gamepadStatus = document.getElementById('gamepad-status') as StatusElement;
 
@@ -792,6 +814,13 @@ export class GamepadController {
     
     // Disconnect WebSocket
     this.wsManager.disconnect();
+  }
+
+  /**
+   * Get the WebSocket manager for external access
+   */
+  public getWebSocketManager(): WebSocketManager {
+    return this.wsManager;
   }
 
   /**
