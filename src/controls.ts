@@ -141,6 +141,12 @@ contro.on('movementUpdate', ({ vector, soleVector, gamepadIndex }) => {
     moveGamepadCursorByPx(soleVector.z, false)
     emitMousemove()
   }
+  
+  // Log physical gamepad movement input
+  if (gamepadIndex !== undefined) {
+    console.log(`[PhysicalGamepad] Movement from gamepad ${gamepadIndex}: vector(${vector.x?.toFixed(2)}, ${vector.z?.toFixed(2)})`)
+  }
+  
   miscUiState.usingGamepadInput = gamepadIndex !== undefined
   if (!bot || !isGameActive(false)) return
 
@@ -514,6 +520,11 @@ const customCommandsHandler = ({ command }) => {
 contro.on('trigger', customCommandsHandler)
 
 contro.on('trigger', ({ command }) => {
+  // Log physical gamepad input - check if currently using gamepad
+  if (miscUiState.usingGamepadInput) {
+    console.log(`[PhysicalGamepad] Trigger command: ${command}`)
+  }
+  
   const willContinue = !isGameActive(true)
   alwaysPressedHandledCommand(command)
   if (willContinue) return
@@ -634,6 +645,11 @@ contro.on('trigger', ({ command }) => {
 })
 
 contro.on('release', ({ command }) => {
+  // Log physical gamepad input - check if currently using gamepad
+  if (miscUiState.usingGamepadInput) {
+    console.log(`[PhysicalGamepad] Release command: ${command}`)
+  }
+  
   inModalCommand(command, false)
   onTriggerOrReleased(command, false)
 })

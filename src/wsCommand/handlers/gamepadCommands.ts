@@ -26,7 +26,7 @@ export class GamepadCommandHandler {
     } catch (error) {
       console.error('[WsCommandClient] Error connecting gamepad:', error)
     }
-  }
+  }j
 
 
 

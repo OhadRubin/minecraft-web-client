@@ -21,14 +21,17 @@ export const gamepadSimulator = {
       gamepadSimulator.getGamepads = navigator.getGamepads.bind(navigator);
       navigator.getGamepads = function () {
         const original = gamepadSimulator.getGamepads ? gamepadSimulator.getGamepads() : [];
-        const result = Array.from(original);
-
-        // Insert our virtual gamepad at index 0, shift others if needed
+        
         if (gamepadSimulator.fakeController.connected) {
+          // When fake gamepad is connected, hide all physical gamepads
+          // Return array with only the fake gamepad at index 0, nulls elsewhere
+          const result = new Array(Math.max(original.length, 1)).fill(null);
           result[0] = gamepadSimulator.fakeController;
+          return result as any;
+        } else {
+          // When no fake gamepad, return original physical gamepads
+          return Array.from(original) as any;
         }
-
-        return result as any;
       };
       console.log("[GamepadSimulator] Virtual gamepad API override installed (no visual)");
     }
@@ -40,7 +43,7 @@ export const gamepadSimulator = {
     gamepadSimulator.fakeController.timestamp = Math.floor(Date.now() / 1000);
     event.gamepad = gamepadSimulator.fakeController;
     window.dispatchEvent(event);
-    console.log("[GamepadSimulator] Virtual gamepad connected");
+    console.log("[GamepadSimulator] Virtual gamepad connected - physical gamepads now disabled");
   },
 
   disconnect: function () {
@@ -49,7 +52,7 @@ export const gamepadSimulator = {
     gamepadSimulator.fakeController.timestamp = Math.floor(Date.now() / 1000);
     event.gamepad = gamepadSimulator.fakeController;
     window.dispatchEvent(event);
-    console.log("[GamepadSimulator] Virtual gamepad disconnected");
+    console.log("[GamepadSimulator] Virtual gamepad disconnected - physical gamepads now enabled");
   },
 
   destroy: function () {
@@ -59,6 +62,7 @@ export const gamepadSimulator = {
     if (gamepadSimulator.getGamepads) {
       navigator.getGamepads = gamepadSimulator.getGamepads;
       gamepadSimulator.getGamepads = null;
+      console.log("[GamepadSimulator] Physical gamepads restored");
     }
     console.log("[GamepadSimulator] Virtual gamepad destroyed");
   },
