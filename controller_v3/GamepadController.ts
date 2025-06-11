@@ -167,6 +167,9 @@ export class GamepadController {
   // Track buttons currently pressed via visual interface (to prevent gamepad override)
   private visuallyPressedButtons: Set<number> = new Set();
   
+  // Track button press start times for duration calculation
+  private buttonPressStartTimes: Map<number, number> = new Map();
+  
   // Button mapping (Xbox controller standard)
   private readonly buttonMapping: ButtonMapping = {
     0: 0, // A button
@@ -355,6 +358,9 @@ export class GamepadController {
         button.pressed = true;
         this.visuallyPressedButtons.add(button.buttonId);
 
+        // Record press start time
+        this.buttonPressStartTimes.set(button.buttonId, Date.now());
+
         // Start continuous pressing for triggers (buttons 6 and 7)
         if (button.buttonId === 6 || button.buttonId === 7) {
           this.startButtonPress(button.buttonId);
@@ -373,6 +379,7 @@ export class GamepadController {
             });
             button.pressed = false;
             this.visuallyPressedButtons.delete(button.buttonId);
+            this.logButtonDuration(button.buttonId);
           }, 100);
         }
       }
@@ -431,6 +438,9 @@ export class GamepadController {
         if (button.buttonId === 6 || button.buttonId === 7) {
           this.stopButtonPress(button.buttonId);
         }
+        
+        // Log button duration
+        this.logButtonDuration(button.buttonId);
       }
     }
 
@@ -489,6 +499,41 @@ export class GamepadController {
       
       console.log(`⏹️ Stopped continuous press for button ${buttonId}`);
     }
+  }
+
+  /**
+   * Log button press duration to terminal
+   */
+  private logButtonDuration(buttonId: number): void {
+    const startTime = this.buttonPressStartTimes.get(buttonId);
+    if (startTime) {
+      const duration = Date.now() - startTime;
+      const buttonName = this.getButtonName(buttonId);
+      const timestamp = new Date().toLocaleTimeString();
+      
+      // Log to terminal
+      const terminal = (window as any).gamepadTerminal;
+      if (terminal) {
+        terminal.writeln(`[${timestamp}] 🎮 Button ${buttonName} pressed for ${duration}ms`);
+      }
+      
+      // Clean up
+      this.buttonPressStartTimes.delete(buttonId);
+    }
+  }
+
+  /**
+   * Get button name from button ID
+   */
+  private getButtonName(buttonId: number): string {
+    const buttonNames: { [key: number]: string } = {
+      0: "A", 1: "B", 2: "X", 3: "Y",
+      4: "L1", 5: "R1", 6: "L2", 7: "R2",
+      8: "SELECT", 9: "START", 10: "L3", 11: "R3",
+      12: "D-RIGHT", 13: "D-DOWN", 14: "D-LEFT", 15: "D-UP",
+      16: "HOME"
+    };
+    return buttonNames[buttonId] || `${buttonId}`;
   }
 
   /**
@@ -559,6 +604,7 @@ export class GamepadController {
             const physicalPressed = gamepad.buttons[j].pressed;
             if (!wasPressed && physicalPressed && !this.visuallyPressedButtons.has(buttonId)) {
               // Button pressed down (physical only, not visual override)
+              this.buttonPressStartTimes.set(buttonId, Date.now());
               await this.wsManager.sendCommand({
                 type: "gamepadButtonPressDown",
                 buttonIndex: buttonId
@@ -569,6 +615,7 @@ export class GamepadController {
                 type: "gamepadButtonPressUp",
                 buttonIndex: buttonId
               });
+              this.logButtonDuration(buttonId);
             }
           }
         }
@@ -736,6 +783,9 @@ export class GamepadController {
     // Clear visual button state
     this.visuallyPressedButtons.clear();
     
+    // Clear button press timers
+    this.buttonPressStartTimes.clear();
+    
     // Disconnect WebSocket
     this.wsManager.disconnect();
   }
@@ -750,6 +800,9 @@ export class GamepadController {
     
     // Clear visual button state
     this.visuallyPressedButtons.clear();
+    
+    // Clear button press timers
+    this.buttonPressStartTimes.clear();
     
     // Remove event listeners
     this.canvas.removeEventListener('mousedown', this.handleMouseDown.bind(this));

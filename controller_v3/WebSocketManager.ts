@@ -139,8 +139,10 @@ export class WebSocketManager {
         // Log to server console
         this.logToServer(`📤 sendCommand called with: ${JSON.stringify(command)}`);
         
-        // Log to terminal in HTML
-        this.logToTerminal(command);
+        // Only log non-button commands to avoid spam (button durations are logged separately)
+        if (command.type !== "gamepadButtonPressDown" && command.type !== "gamepadButtonPressUp") {
+            this.logToTerminal(command);
+        }
         
         await this.send(command);
     }
