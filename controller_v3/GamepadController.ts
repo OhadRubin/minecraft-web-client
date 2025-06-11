@@ -164,6 +164,9 @@ export class GamepadController {
   private wsManager: WebSocketManager;
   private state: GamepadControllerState;
   
+  // Track buttons currently pressed via visual interface (to prevent gamepad override)
+  private visuallyPressedButtons: Set<number> = new Set();
+  
   // Button mapping (Xbox controller standard)
   private readonly buttonMapping: ButtonMapping = {
     0: 0, // A button
@@ -350,6 +353,7 @@ export class GamepadController {
     for (const button of this.state.buttons) {
       if (button.containsPoint(pos.x, pos.y)) {
         button.pressed = true;
+        this.visuallyPressedButtons.add(button.buttonId);
 
         // Start continuous pressing for triggers (buttons 6 and 7)
         if (button.buttonId === 6 || button.buttonId === 7) {
@@ -368,6 +372,7 @@ export class GamepadController {
               buttonIndex: button.buttonId
             });
             button.pressed = false;
+            this.visuallyPressedButtons.delete(button.buttonId);
           }, 100);
         }
       }
@@ -418,11 +423,14 @@ export class GamepadController {
   private async handleMouseUp(): Promise<void> {
     // Release all buttons and stop continuous pressing
     for (const button of this.state.buttons) {
-      button.pressed = false;
+      if (this.visuallyPressedButtons.has(button.buttonId)) {
+        button.pressed = false;
+        this.visuallyPressedButtons.delete(button.buttonId);
 
-      // Stop continuous pressing for triggers
-      if (button.buttonId === 6 || button.buttonId === 7) {
-        this.stopButtonPress(button.buttonId);
+        // Stop continuous pressing for triggers
+        if (button.buttonId === 6 || button.buttonId === 7) {
+          this.stopButtonPress(button.buttonId);
+        }
       }
     }
 
@@ -541,17 +549,22 @@ export class GamepadController {
           const button = this.state.buttons.find(b => b.buttonId === buttonId);
           if (button) {
             const wasPressed = button.pressed;
-            button.pressed = gamepad.buttons[j].pressed;
+            
+            // Only update from physical gamepad if not visually pressed
+            if (!this.visuallyPressedButtons.has(buttonId)) {
+              button.pressed = gamepad.buttons[j].pressed;
+            }
 
-            // Send command on button state change
-            if (!wasPressed && button.pressed) {
-              // Button pressed down
+            // Send command on button state change (only for physical gamepad state)
+            const physicalPressed = gamepad.buttons[j].pressed;
+            if (!wasPressed && physicalPressed && !this.visuallyPressedButtons.has(buttonId)) {
+              // Button pressed down (physical only, not visual override)
               await this.wsManager.sendCommand({
                 type: "gamepadButtonPressDown",
                 buttonIndex: buttonId
               });
-            } else if (wasPressed && !button.pressed) {
-              // Button released
+            } else if (wasPressed && !physicalPressed && !this.visuallyPressedButtons.has(buttonId)) {
+              // Button released (physical only, not visual override)
               await this.wsManager.sendCommand({
                 type: "gamepadButtonPressUp",
                 buttonIndex: buttonId
@@ -720,6 +733,9 @@ export class GamepadController {
     // Clear all button intervals
     this.state.buttonIntervals.clear();
     
+    // Clear visual button state
+    this.visuallyPressedButtons.clear();
+    
     // Disconnect WebSocket
     this.wsManager.disconnect();
   }
@@ -731,6 +747,9 @@ export class GamepadController {
     this.stopAnimationLoop();
     this.wsManager.disconnect();
     this.wsManager.destroy();
+    
+    // Clear visual button state
+    this.visuallyPressedButtons.clear();
     
     // Remove event listeners
     this.canvas.removeEventListener('mousedown', this.handleMouseDown.bind(this));
