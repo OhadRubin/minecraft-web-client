@@ -14,6 +14,6 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "../mc_ts_controller_new/controller.ts"],
   "exclude": ["node_modules", "dist"]
 }
