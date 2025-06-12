@@ -9,7 +9,7 @@ const https = require('https')
 const fs = require('fs')
 const WebSocket = require('ws')
 const http = require('http')
-const { initWsLogger, shutdownWsLogger, logMessage } = require('./wsLogger')
+// const { initWsLogger, shutdownWsLogger, logMessage } = require('./wsLogger')
 let siModule
 try {
     siModule = require('systeminformation')
@@ -43,11 +43,248 @@ function createSafeMessageForConsole(message) {
     return message
 }
 
+// =======================
+// Movement Summary Feature
+// =======================
+
+// Configuration options
+const movementConfig = {
+    graceExpiryMs: 150,           // Grace period after movement stops
+    maxSessionDurationMs: 30000,  // Auto-expire abandoned sessions  
+    minMovementsForSummary: 2,    // Minimum movements to generate summary
+    enableSummaries: true         // Global feature toggle
+}
+
+// Movement tracking state
+const movementSessions = new Map() // key: stickIndex, value: MovementSession
+const buttonSessions = new Map()   // key: buttonIndex, value: ButtonSession
+
+// MovementSession class - tracks joystick movement sequences
+class MovementSession {
+    constructor(stickIndex) {
+        this.stickIndex = stickIndex
+        this.movements = []
+        this.startTime = null
+        this.endTime = null
+        this.graceTimer = null
+        this.active = false
+        this.startBotPosition = null
+        this.endBotPosition = null
+    }
+    
+    addMovement(x, y, timestamp) {
+        if (!this.startTime) this.startTime = timestamp
+        this.movements.push({ x, y, timestamp })
+        this.active = true
+    }
+    
+    setStartBotPosition(position) {
+        this.startBotPosition = { x: position.x, y: position.y, z: position.z }
+    }
+    
+    setEndBotPosition(position) {
+        this.endBotPosition = { x: position.x, y: position.y, z: position.z }
+    }
+    
+    calculateWorldDistance() {
+        if (!this.startBotPosition || !this.endBotPosition) return null
+        
+        const dx = this.endBotPosition.x - this.startBotPosition.x
+        const dy = this.endBotPosition.y - this.startBotPosition.y
+        const dz = this.endBotPosition.z - this.startBotPosition.z
+        
+        return Math.sqrt(dx * dx + dy * dy + dz * dz)
+    }
+    
+    calculateStats() {
+        if (this.movements.length === 0) return null
+        
+        let totalDistance = 0
+        let peakVelocity = 0
+        
+        for (let i = 1; i < this.movements.length; i++) {
+            const prev = this.movements[i - 1]
+            const curr = this.movements[i]
+            
+            // Calculate distance between joystick points
+            const dx = curr.x - prev.x
+            const dy = curr.y - prev.y
+            const distance = Math.sqrt(dx * dx + dy * dy)
+            totalDistance += distance
+            
+            // Calculate velocity (distance per millisecond)
+            const timeDiff = curr.timestamp - prev.timestamp
+            if (timeDiff > 0) {
+                const velocity = distance / timeDiff
+                peakVelocity = Math.max(peakVelocity, velocity)
+            }
+        }
+        
+        const worldDistance = this.calculateWorldDistance()
+        
+        return {
+            totalDistance: Math.round(totalDistance * 1000) / 1000, // joystick distance
+            worldDistance: worldDistance ? Math.round(worldDistance * 100) / 100 : null, // world blocks
+            duration: this.endTime - this.startTime,
+            peakVelocity: Math.round(peakVelocity * 1000) / 1000,
+            startTime: this.startTime,
+            endTime: this.endTime,
+            startPosition: this.startBotPosition,
+            endPosition: this.endBotPosition
+        }
+    }
+}
+
+// ButtonSession class - tracks button press/release sequences
+class ButtonSession {
+    constructor(buttonIndex) {
+        this.buttonIndex = buttonIndex
+        this.pressStartTime = null
+        this.releaseTime = null
+        this.duration = null
+        this.gameContext = null
+    }
+    
+    startPress(timestamp, context) {
+        this.pressStartTime = timestamp
+        this.gameContext = context
+    }
+    
+    endPress(timestamp) {
+        this.releaseTime = timestamp
+        this.duration = timestamp - this.pressStartTime
+    }
+    
+    calculateStats() {
+        return {
+            buttonIndex: this.buttonIndex,
+            duration: this.duration,
+            gameContext: this.gameContext,
+            pressStartTime: this.pressStartTime,
+            releaseTime: this.releaseTime
+        }
+    }
+}
+
+// Movement summary functions
+function handleJoystickMove(message, ws) {
+    if (!movementConfig.enableSummaries) return false
+    
+    const { stickIndex, x, y } = message
+    const timestamp = Date.now()
+    
+    // Get or create movement session for this stick
+    let session = movementSessions.get(stickIndex)
+    if (!session) {
+        session = new MovementSession(stickIndex)
+        movementSessions.set(stickIndex, session)
+        console.log(`[Movement] Started new movement session for stick ${stickIndex}`)
+    }
+    
+    if (x === 0 && y === 0) {
+        // Potential sequence end - start grace period timer
+        if (session.graceTimer) {
+            clearTimeout(session.graceTimer)
+        }
+        
+        console.log(`[Movement] Stick ${stickIndex} returned to center, starting grace period`)
+        session.graceTimer = setTimeout(() => {
+            completeMovementSequence(stickIndex)
+        }, movementConfig.graceExpiryMs)
+        
+    } else {
+        // Active movement - cancel any pending end timer
+        if (session.graceTimer) {
+            clearTimeout(session.graceTimer)
+            session.graceTimer = null
+        }
+        
+        // Record movement data
+        session.addMovement(x, y, timestamp)
+        console.log(`[Movement] Recorded movement for stick ${stickIndex}: (${x}, ${y})`)
+    }
+    
+    return true // Indicate message was processed
+}
+
+function completeMovementSequence(stickIndex) {
+    const session = movementSessions.get(stickIndex)
+    if (!session || !session.active) return
+    
+    session.endTime = Date.now()
+    const stats = session.calculateStats()
+    
+    if (stats && session.movements.length >= movementConfig.minMovementsForSummary) {
+        console.log(`[Movement] Completing movement sequence for stick ${stickIndex}:`, stats)
+        // Broadcast movement summary to all MCP clients
+        broadcastMovementSummary(stickIndex, stats)
+    } else {
+        console.log(`[Movement] Skipping summary for stick ${stickIndex} - insufficient movements (${session.movements.length})`)
+    }
+    
+    // Clean up completed session
+    movementSessions.delete(stickIndex)
+}
+
+function broadcastMovementSummary(stickIndex, stats) {
+    const summaryMessage = {
+        type: "movementSummary",
+        stickIndex: stickIndex,
+        ...stats
+    }
+    
+    const messageStr = JSON.stringify(summaryMessage)
+    console.log(`[Movement] Broadcasting movement summary for stick ${stickIndex}`)
+    
+    // Send to all connected MCP clients
+    for (const client of mcpClients) {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(messageStr)
+            console.log(`[Movement] Summary sent to MCP client`)
+        }
+    }
+    
+    // Also send to pygame clients (since they can connect as either type)
+    for (const client of pygameClients) {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(messageStr)
+            console.log(`[Movement] Summary sent to pygame client`)
+        }
+    }
+}
+
+// Session cleanup - auto-expire abandoned sessions
+function cleanupAbandonedSessions() {
+    const now = Date.now()
+    
+    for (const [stickIndex, session] of movementSessions.entries()) {
+        if (session.startTime && (now - session.startTime) > movementConfig.maxSessionDurationMs) {
+            console.log(`[Movement] Auto-expiring abandoned session for stick ${stickIndex}`)
+            if (session.graceTimer) clearTimeout(session.graceTimer)
+            movementSessions.delete(stickIndex)
+        }
+    }
+    
+    for (const [buttonIndex, session] of buttonSessions.entries()) {
+        if (session.pressStartTime && (now - session.pressStartTime) > movementConfig.maxSessionDurationMs) {
+            console.log(`[Movement] Auto-expiring abandoned button session for button ${buttonIndex}`)
+            buttonSessions.delete(buttonIndex)
+        }
+    }
+}
+
+// Cleanup interval - run every 30 seconds
+setInterval(cleanupAbandonedSessions, 30000)
+
+// =======================
+// End Movement Summary Feature
+// =======================
+
 // Create our app
 const app = express()
-console.log('initWsLogger')
-initWsLogger()
-process.on('exit', shutdownWsLogger)
+// console.log('initWsLogger')
+// initWsLogger()
+// process.on('exit', shutdownWsLogger)
 
 const isProd = process.argv.includes('--prod') || process.env.NODE_ENV === 'production'
 app.use(compression())
@@ -128,7 +365,7 @@ console.log(`[WebSocket] WebSocket server initialized`)
 wss.on('connection', (ws, req) => {
     console.log(`[WebSocket] New connection established. Total connections: ${wss.clients.size}`)
     console.log(`[WebSocket] Current bot clients: ${botClients.size}, MCP clients: ${mcpClients.size}, pygame clients: ${pygameClients.size}`)
-    logMessage('connect', req.socket.remoteAddress)
+    // logMessage('connect', req.socket.remoteAddress)
     ws.remoteAddress = req.socket.remoteAddress
 
     ws.on('message', data => {
@@ -139,7 +376,7 @@ wss.on('connection', (ws, req) => {
                 `[SCREENSHOT_DATA_FILTERED] - Raw message filtered (${dataStr.length} bytes)` : 
                 dataStr
             console.log(`[WebSocket] Received raw message: ${safeRawMessage}`)
-            logMessage('incoming', dataStr)
+            // logMessage('incoming', dataStr)
 
             const msg = JSON.parse(dataStr)
             console.log(`[WebSocket] Parsed message:`, createSafeMessageForConsole(msg))
@@ -185,7 +422,7 @@ wss.on('connection', (ws, req) => {
                 const str = JSON.stringify(msg)
                 let forwardedCount = 0
 
-                logMessage('outgoing', str)
+                // logMessage('outgoing', str)
 
                 for (const client of mcpClients) {
                     if (client.readyState === WebSocket.OPEN) {
@@ -204,12 +441,21 @@ wss.on('connection', (ws, req) => {
                 }
 
             } else if (mcpClients.has(ws)) {
+                // Check for movement summary messages first
+                if (msg.type === 'gamepadJoystickMove') {
+                    const processed = handleJoystickMove(msg, ws)
+                    if (processed) {
+                        console.log(`[WebSocket] Processed gamepadJoystickMove from MCP client for stick ${msg.stickIndex}`)
+                    }
+                    // Continue to forward to bot clients regardless
+                }
+                
                 // Message from MCP client - forward to bot clients
                 console.log(`[WebSocket] Forwarding MCP command to ${botClients.size} bot client(s)`)
                 const str = JSON.stringify(msg)
                 let forwardedCount = 0
 
-                logMessage('outgoing', str)
+                // logMessage('outgoing', str)
 
                 for (const client of botClients) {
                     if (client.readyState === WebSocket.OPEN) {
@@ -229,12 +475,21 @@ wss.on('connection', (ws, req) => {
                 }
 
             } else if (pygameClients.has(ws)) {
+                // Check for movement summary messages first
+                if (msg.type === 'gamepadJoystickMove') {
+                    const processed = handleJoystickMove(msg, ws)
+                    if (processed) {
+                        console.log(`[WebSocket] Processed gamepadJoystickMove from pygame client for stick ${msg.stickIndex}`)
+                    }
+                    // Continue to forward to bot clients regardless
+                }
+                
                 // Message from pygame client - forward to bot clients (same as MCP clients)
                 console.log(`[WebSocket] Forwarding pygame command to ${botClients.size} bot client(s)`)
                 const str = JSON.stringify(msg)
                 let forwardedCount = 0
 
-                logMessage('outgoing', str)
+                // logMessage('outgoing', str)
 
                 for (const client of botClients) {
                     if (client.readyState === WebSocket.OPEN) {
@@ -269,7 +524,7 @@ wss.on('connection', (ws, req) => {
 
     ws.on('close', () => {
         console.log(`[WebSocket] Connection closed. Remaining connections: ${wss.clients.size}`)
-        logMessage('disconnect', ws.remoteAddress)
+        // logMessage('disconnect', ws.remoteAddress)
     })
 
     ws.on('error', (err) => {

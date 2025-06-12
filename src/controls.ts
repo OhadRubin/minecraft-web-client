@@ -143,8 +143,15 @@ contro.on('movementUpdate', ({ vector, soleVector, gamepadIndex }) => {
   }
   
   // Log physical gamepad movement input
+  const gamepads = navigator.getGamepads();
+  
   if (gamepadIndex !== undefined) {
-    console.log(`[PhysicalGamepad] Movement from gamepad ${gamepadIndex}: vector(${vector.x?.toFixed(2)}, ${vector.z?.toFixed(2)})`)
+    // Only log gamepad movement if outside the deadzone
+    const deadzone = 0.1 // Using the same deadzone value as above
+    if (Math.abs(soleVector.x) >= deadzone || Math.abs(soleVector.z) >= deadzone) {
+      const name = gamepads[gamepadIndex]?.id?.substring(0, 40);
+      console.log(`[Gamepad ${name}] Movement: vector(${vector.x?.toFixed(2)}, ${vector.z?.toFixed(2)})`)
+    }
   }
   
   miscUiState.usingGamepadInput = gamepadIndex !== undefined
@@ -521,9 +528,9 @@ contro.on('trigger', customCommandsHandler)
 
 contro.on('trigger', ({ command }) => {
   // Log physical gamepad input - check if currently using gamepad
-  if (miscUiState.usingGamepadInput) {
-    console.log(`[PhysicalGamepad] Trigger command: ${command}`)
-  }
+  // if (miscUiState.usingGamepadInput) {
+  //   console.log(`[PhysicalGamepad] Trigger command: ${command}`)
+  // }
   
   const willContinue = !isGameActive(true)
   alwaysPressedHandledCommand(command)
@@ -646,9 +653,9 @@ contro.on('trigger', ({ command }) => {
 
 contro.on('release', ({ command }) => {
   // Log physical gamepad input - check if currently using gamepad
-  if (miscUiState.usingGamepadInput) {
-    console.log(`[PhysicalGamepad] Release command: ${command}`)
-  }
+  // if (miscUiState.usingGamepadInput) {
+  //   console.log(`[PhysicalGamepad] Release command: ${command}`)
+  // }
   
   inModalCommand(command, false)
   onTriggerOrReleased(command, false)
