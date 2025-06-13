@@ -72,4 +72,17 @@ export interface MouseCommand {
   toY?: number // for animation to position
   radius?: number // for circular movement
   clockwise?: boolean // for circular movement direction
+  // screenshot context fields
+  context?: string // context for screenshot requests (e.g., 'movement_complete')
+  movementData?: {
+    stickIndex: number
+    totalDistance: number
+    worldDistance: number | null
+    duration: number
+    peakVelocity: number
+    startTime: number
+    endTime: number
+    startPosition: { x: number; y: number; z: number } | null
+    endPosition: { x: number; y: number; z: number } | null
+  }
 }

@@ -216,41 +216,32 @@ function completeMovementSequence(stickIndex) {
     
     if (stats && session.movements.length >= movementConfig.minMovementsForSummary) {
         console.log(`[Movement] Completing movement sequence for stick ${stickIndex}:`, stats)
-        // Broadcast movement summary to all MCP clients
-        broadcastMovementSummary(stickIndex, stats)
+        
+        // Send screenshot request with movement data included
+        const screenshotRequest = {
+            type: "getScreenshot",
+            context: "movement_complete",
+            movementData: {
+                stickIndex: stickIndex,
+                ...stats
+            }
+        }
+        
+        console.log(`[Movement] Requesting screenshot with movement data for stick ${stickIndex}`)
+        
+        // Send screenshot request to all bot clients
+        for (const client of botClients) {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify(screenshotRequest))
+                console.log(`[Movement] Screenshot request with movement data sent to bot client`)
+            }
+        }
     } else {
         console.log(`[Movement] Skipping summary for stick ${stickIndex} - insufficient movements (${session.movements.length})`)
     }
     
     // Clean up completed session
     movementSessions.delete(stickIndex)
-}
-
-function broadcastMovementSummary(stickIndex, stats) {
-    const summaryMessage = {
-        type: "movementSummary",
-        stickIndex: stickIndex,
-        ...stats
-    }
-    
-    const messageStr = JSON.stringify(summaryMessage)
-    console.log(`[Movement] Broadcasting movement summary for stick ${stickIndex}`)
-    
-    // Send to all connected MCP clients
-    for (const client of mcpClients) {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(messageStr)
-            console.log(`[Movement] Summary sent to MCP client`)
-        }
-    }
-    
-    // Also send to pygame clients (since they can connect as either type)
-    for (const client of pygameClients) {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(messageStr)
-            console.log(`[Movement] Summary sent to pygame client`)
-        }
-    }
 }
 
 // Session cleanup - auto-expire abandoned sessions

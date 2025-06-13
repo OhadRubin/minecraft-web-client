@@ -95,13 +95,23 @@ export class VisualCommandHandler {
 
       const status = this.collectBotStatus()
       const readableStatus = this.prettyPrintBotStatus(status)
+
       if (this.ws) {
-        this.ws.send(JSON.stringify({
+        const response: any = {
           type: 'screenshot',
           data: base64Data,
           status: readableStatus,
           statusData: status
-        }))
+        }
+
+        // Include movement data if this screenshot was triggered by movement completion
+        if (cmd.context === 'movement_complete' && cmd.movementData) {
+          response.movementData = cmd.movementData
+          response.context = 'movement_complete'
+          console.log('[WsCommandClient] Including movement data in screenshot response:', cmd.movementData)
+        }
+
+        this.ws.send(JSON.stringify(response))
       }
     } catch (error) {
       console.error('[WsCommandClient] Error capturing screenshot:', error)
