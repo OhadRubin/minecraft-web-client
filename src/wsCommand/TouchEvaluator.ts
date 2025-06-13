@@ -88,7 +88,8 @@ export class TouchEvaluator {
         await this.visualHandler.handleAnnotate3dPosition(cmd)
         break
       case 'getScreenshot':
-        await this.visualHandler.handleGetScreenshot(cmd)
+        // await 
+        this.visualHandler.handleGetScreenshot(cmd)
         break
       case 'getBotStatus':
         await this.visualHandler.handleGetBotStatus(cmd)

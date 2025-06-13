@@ -4,7 +4,58 @@ import html2canvas from 'html2canvas'
 import * as THREE from 'three'
 
 export class VisualCommandHandler {
-  constructor(private bot: any, private ws?: WebSocket) {}
+  private screenshotWorker: Worker | null = null;
+  
+  constructor(private bot: any, private ws?: WebSocket) {
+    this.initializeWorker();
+  }
+  
+  private initializeWorker() {
+    try {
+      console.log('[VisualCommandHandler] Attempting to create worker at /workers/screenshot-worker.js');
+      this.screenshotWorker = new Worker('/workers/screenshot-worker.js');
+      
+      // Add detailed error listener
+      this.screenshotWorker.onerror = (error) => {
+        console.error('[VisualCommandHandler] ❌ Worker script error:', error);
+        console.error('[VisualCommandHandler] ❌ This usually means:');
+        console.error('[VisualCommandHandler] ❌   1. Worker file not found (run "pnpm build-other-workers")');
+        console.error('[VisualCommandHandler] ❌   2. Browser doesn\'t support OffscreenCanvas');
+        console.error('[VisualCommandHandler] ❌   3. Worker script has syntax errors');
+        console.error('[VisualCommandHandler] ❌ Falling back to main thread processing');
+        this.screenshotWorker = null; // Clear failed worker
+      };
+      
+      // Add message error handler
+      this.screenshotWorker.onmessageerror = (error) => {
+        console.error('[VisualCommandHandler] ❌ Worker message error:', error);
+      };
+      
+      // Test worker communication with timeout
+      console.log('[VisualCommandHandler] Testing worker communication...');
+      this.screenshotWorker.postMessage({ type: 'TEST' });
+      
+      // Set up test response handler
+      const testHandler = (event: MessageEvent) => {
+        if (event.data.type === 'TEST_RESPONSE') {
+          console.log('[VisualCommandHandler] ✅ Worker communication test successful');
+          this.screenshotWorker?.removeEventListener('message', testHandler);
+        }
+      };
+      this.screenshotWorker.addEventListener('message', testHandler);
+      
+      // Timeout test
+      setTimeout(() => {
+        if (this.screenshotWorker) {
+          this.screenshotWorker.removeEventListener('message', testHandler);
+        }
+      }, 5000);
+      
+    } catch (error) {
+      console.warn('[VisualCommandHandler] ❌ Worker creation failed:', error);
+      this.screenshotWorker = null;
+    }
+  }
 
   async handleAnnotate3dPosition(cmd: MouseCommand) {
     try {
@@ -31,105 +82,141 @@ export class VisualCommandHandler {
     }
   }
 
-  async handleGetScreenshot(cmd: MouseCommand) {
-    try {
+  handleGetScreenshot(cmd: MouseCommand) {
+    // Fire-and-forget: Start async capture, don't await
+    this.generateScreenshotAsync(cmd);
+  }
 
-      // Wait for the next frame to ensure rendering is complete
-      await new Promise(resolve => requestAnimationFrame(resolve))
+  private generateScreenshotAsync(cmd: MouseCommand) {
+    setTimeout(async () => {
+      try {
+        // Wait for the next frame to ensure rendering is complete
+        await new Promise(resolve => requestAnimationFrame(resolve));
 
-      // Create a timeout promise to prevent hanging
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Screenshot capture timeout')), 10000)
-      })
+        // DOM capture (must stay on main thread)
+        const canvas = await html2canvas(document.body, {
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: null,
+          scale: 1,
+          logging: false,
+          ignoreElements: (element) => {
+            return element.classList?.contains('ignore-screenshot') || false
+          },
+          foreignObjectRendering: true,
+          canvas: undefined
+        });
 
-      // Create the screenshot capture promise
-      const capturePromise = new Promise<string>((resolve, reject) => {
-        try {
-          // Use a small delay to ensure the frame is fully rendered
-          setTimeout(async () => {
-            try {
-
-              // Use html2canvas to capture the entire page including all UI elements
-              const canvas = await html2canvas(document.body, {
-                useCORS: true,
-                allowTaint: true,
-                backgroundColor: null,
-                scale: 1, // Full size capture
-                logging: false,
-                ignoreElements: (element) => {
-                  // Optionally ignore certain elements (e.g., debug overlays)
-                  return element.classList?.contains('ignore-screenshot') || false
-                },
-                // Capture WebGL canvases properly
-                foreignObjectRendering: true,
-                canvas: undefined
-              })
-
-              const dataUrl = canvas.toDataURL('image/png', 0.8)
-              const base64Data = dataUrl.split(',')[1]
-
-              // Resize the image to 1080 pixels width while maintaining aspect ratio
-
-              try {
-                // Resize the captured image to 1080 width
-                const resizedDataUrl = await resizeImageBase64(dataUrl, 1080)
-                const resizedBase64Data = resizedDataUrl.split(',')[1]
-
-                resolve(resizedBase64Data)
-              } catch (resizeError) {
-                console.warn('[WsCommandClient] Failed to resize screenshot, using original:', resizeError)
-                resolve(base64Data)
-              }
-            } catch (error) {
-              console.error('[WsCommandClient] html2canvas failed:', error)
-              reject(error)
-            }
-          }, 100)
-        } catch (error) {
-          reject(error)
-        }
-      })
-
-      // Race between capture and timeout
-      const base64Data = await Promise.race([capturePromise, timeoutPromise])
-
-      const status = this.collectBotStatus()
-      const readableStatus = this.prettyPrintBotStatus(status)
-
-      if (this.ws) {
-        const response: any = {
-          type: 'screenshot',
-          data: base64Data,
-          status: readableStatus,
-          statusData: status
+        // Try worker processing first, fallback to main thread
+        if (this.screenshotWorker) {
+          this.processScreenshotInWorker(canvas, cmd);
+        } else {
+          this.processScreenshotMainThread(canvas, cmd);
         }
 
-        // Include movement data if this screenshot was triggered by movement completion
-        if (cmd.context === 'movement_complete' && cmd.movementData) {
-          response.movementData = cmd.movementData
-          response.context = 'movement_complete'
-          console.log('[WsCommandClient] Including movement data in screenshot response:', cmd.movementData)
-        }
-
-        // Include button data if this screenshot was triggered by button completion
-        if (cmd.context === 'button_complete' && cmd.buttonData) {
-          response.buttonData = cmd.buttonData
-          response.context = 'button_complete'
-          console.log('[WsCommandClient] Including button data in screenshot response:', cmd.buttonData)
-        }
-
-        this.ws.send(JSON.stringify(response))
+      } catch (error) {
+        console.error('[WsCommandClient] DOM capture failed:', error);
+        this.sendErrorResponse(error.message);
       }
-    } catch (error) {
-      console.error('[WsCommandClient] Error capturing screenshot:', error)
-      if (this.ws) {
-        this.ws.send(JSON.stringify({
-          type: 'screenshot',
-          data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
-          error: error.message
-        }))
-      }
+    }, 0);
+  }
+
+  private processScreenshotInWorker(canvas: HTMLCanvasElement, cmd: MouseCommand) {
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      this.processScreenshotMainThread(canvas, cmd);
+      return;
     }
+
+    // Get ImageData (lightweight operation)
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    // Set up one-time message listener
+    const handleWorkerMessage = (event: MessageEvent) => {
+      const { type, data, error } = event.data;
+      
+      if (type === 'SCREENSHOT_COMPLETE') {
+        this.screenshotWorker?.removeEventListener('message', handleWorkerMessage);
+        this.sendScreenshotResponse(data, cmd);
+      } else if (type === 'SCREENSHOT_ERROR') {
+        this.screenshotWorker?.removeEventListener('message', handleWorkerMessage);
+        console.warn('[WsCommandClient] Worker processing failed, falling back to main thread:', error);
+        this.processScreenshotMainThread(canvas, cmd);
+      }
+    };
+
+    this.screenshotWorker!.addEventListener('message', handleWorkerMessage);
+
+    // Send work to worker
+    this.screenshotWorker!.postMessage({
+      type: 'PROCESS_SCREENSHOT',
+      data: {
+        imageData: imageData,
+        width: canvas.width,
+        height: canvas.height,
+        targetWidth: 1080
+      }
+    });
+  }
+
+  private async processScreenshotMainThread(canvas: HTMLCanvasElement, cmd: MouseCommand) {
+    try {
+      const dataUrl = canvas.toDataURL('image/png', 0.8);
+      const base64Data = dataUrl.split(',')[1];
+
+      // Keep original resizing logic for fallback
+      let finalBase64Data = base64Data;
+      try {
+        const resizedDataUrl = await resizeImageBase64(dataUrl, 1080);
+        finalBase64Data = resizedDataUrl.split(',')[1];
+      } catch (resizeError) {
+        console.warn('[WsCommandClient] Failed to resize screenshot, using original:', resizeError);
+      }
+
+      this.sendScreenshotResponse(finalBase64Data, cmd);
+    } catch (error) {
+      console.error('[WsCommandClient] Main thread processing failed:', error);
+      this.sendErrorResponse(error.message);
+    }
+  }
+
+  private sendScreenshotResponse(base64Data: string, cmd: MouseCommand) {
+    if (!this.ws) return;
+
+    const status = this.collectBotStatus();
+    const readableStatus = this.prettyPrintBotStatus(status);
+
+    const response: any = {
+      type: 'screenshot',
+      data: base64Data,
+      status: readableStatus,
+      statusData: status
+    };
+
+    // Include context data
+    if (cmd.context === 'movement_complete' && cmd.movementData) {
+      response.movementData = cmd.movementData;
+      response.context = 'movement_complete';
+      console.log('[WsCommandClient] Including movement data in screenshot response:', cmd.movementData);
+    }
+
+    if (cmd.context === 'button_complete' && cmd.buttonData) {
+      response.buttonData = cmd.buttonData;
+      response.context = 'button_complete';
+      console.log('[WsCommandClient] Including button data in screenshot response:', cmd.buttonData);
+    }
+
+    this.ws.send(JSON.stringify(response));
+  }
+
+  private sendErrorResponse(errorMessage: string) {
+    if (!this.ws) return;
+
+    this.ws.send(JSON.stringify({
+      type: 'screenshot',
+      data: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=',
+      error: errorMessage
+    }));
   }
 
   async handleGetBotStatus(cmd: MouseCommand) {

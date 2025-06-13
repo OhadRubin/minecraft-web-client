@@ -17,7 +17,7 @@ export class Worker {
     this.queue.push(cmd)
   }
   
-  private async processLoop() {
+private async processLoop() {
     while (this.running) {
       const cmd = this.queue.shift()
       if (cmd) {

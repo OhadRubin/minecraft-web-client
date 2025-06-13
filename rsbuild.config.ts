@@ -195,6 +195,10 @@ const appConfig = defineConfig({
                     } else if (!dev) {
                         await execAsync('pnpm run build-mesher')
                     }
+                    
+                    // Build workers
+                    await execAsync('pnpm run build-other-workers')
+                    
                     fs.writeFileSync('./dist/version.txt', buildingVersion, 'utf-8')
                     console.timeEnd('total-prep')
                 }
