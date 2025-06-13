@@ -55,6 +55,10 @@ const movementConfig = {
     enableSummaries: true         // Global feature toggle
 }
 
+const buttonConfig = {
+    enableSummaries: true         // Global feature toggle for button screenshots
+}
+
 // Movement tracking state
 const movementSessions = new Map() // key: stickIndex, value: MovementSession
 const buttonSessions = new Map()   // key: buttonIndex, value: ButtonSession
@@ -142,12 +146,10 @@ class ButtonSession {
         this.pressStartTime = null
         this.releaseTime = null
         this.duration = null
-        this.gameContext = null
     }
     
-    startPress(timestamp, context) {
+    startPress(timestamp) {
         this.pressStartTime = timestamp
-        this.gameContext = context
     }
     
     endPress(timestamp) {
@@ -159,7 +161,6 @@ class ButtonSession {
         return {
             buttonIndex: this.buttonIndex,
             duration: this.duration,
-            gameContext: this.gameContext,
             pressStartTime: this.pressStartTime,
             releaseTime: this.releaseTime
         }
@@ -242,6 +243,94 @@ function completeMovementSequence(stickIndex) {
     
     // Clean up completed session
     movementSessions.delete(stickIndex)
+}
+
+// Button summary functions
+function handleButtonPress(message, ws) {
+    if (!buttonConfig.enableSummaries) return false
+    
+    const { buttonIndex, type } = message
+    const timestamp = Date.now()
+    
+    if (type === 'gamepadButtonPressDown') {
+        // Start new button session
+        let session = new ButtonSession(buttonIndex)
+        session.startPress(timestamp)
+        buttonSessions.set(buttonIndex, session)
+        console.log(`[Button] Started button press session for button ${buttonIndex}`)
+        
+    } else if (type === 'gamepadButtonPressUp') {
+        // Complete button session
+        const session = buttonSessions.get(buttonIndex)
+        if (session && session.pressStartTime) {
+            session.endPress(timestamp)
+            completeButtonSequence(buttonIndex)
+        } else {
+            console.log(`[Button] No active session found for button ${buttonIndex} release`)
+        }
+    }
+    
+    return true
+}
+
+function completeButtonSequence(buttonIndex) {
+    const session = buttonSessions.get(buttonIndex)
+    if (!session || !session.pressStartTime || !session.releaseTime) return
+    
+    const stats = session.calculateStats()
+    
+    if (stats) {
+        console.log(`[Button] Completed button ${buttonIndex} press:`, stats)
+        
+        // Create screenshot request with button data
+        const screenshotRequest = {
+            type: "getScreenshot",
+            context: "button_complete",
+            buttonData: {
+                buttonIndex: buttonIndex,
+                buttonName: getButtonName(buttonIndex),
+                duration: stats.duration,
+                pressStartTime: stats.pressStartTime,
+                releaseTime: stats.releaseTime
+            }
+        }
+        
+        console.log(`[Button] Sending screenshot request with button data:`, screenshotRequest.buttonData)
+        
+        // Send to all bot clients
+        for (const client of botClients) {
+            if (client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify(screenshotRequest))
+                console.log(`[Button] Screenshot request with button data sent to bot client`)
+            }
+        }
+    }
+    
+    // Clean up completed session
+    buttonSessions.delete(buttonIndex)
+}
+
+// Helper function to map button indices to names
+function getButtonName(buttonIndex) {
+    const buttonNames = {
+        0: "A",      // A button
+        1: "B",      // B button  
+        2: "X",      // X button
+        3: "Y",      // Y button
+        4: "LB",     // Left bumper
+        5: "RB",     // Right bumper
+        6: "LT",     // Left trigger
+        7: "RT",     // Right trigger
+        8: "View",   // View button
+        9: "Menu",   // Menu button
+        10: "LS",    // Left stick click
+        11: "RS",    // Right stick click
+        12: "Up",    // D-pad up
+        13: "Down",  // D-pad down
+        14: "Left",  // D-pad left
+        15: "Right"  // D-pad right
+    }
+    return buttonNames[buttonIndex] || `Button${buttonIndex}`
 }
 
 // Session cleanup - auto-expire abandoned sessions
@@ -441,6 +530,15 @@ wss.on('connection', (ws, req) => {
                     // Continue to forward to bot clients regardless
                 }
                 
+                // Check for button press messages
+                if (msg.type === 'gamepadButtonPressDown' || msg.type === 'gamepadButtonPressUp') {
+                    const processed = handleButtonPress(msg, ws)
+                    if (processed) {
+                        console.log(`[WebSocket] Processed ${msg.type} from MCP client for button ${msg.buttonIndex}`)
+                    }
+                    // Continue to forward to bot clients regardless
+                }
+                
                 // Message from MCP client - forward to bot clients
                 console.log(`[WebSocket] Forwarding MCP command to ${botClients.size} bot client(s)`)
                 const str = JSON.stringify(msg)
@@ -471,6 +569,15 @@ wss.on('connection', (ws, req) => {
                     const processed = handleJoystickMove(msg, ws)
                     if (processed) {
                         console.log(`[WebSocket] Processed gamepadJoystickMove from pygame client for stick ${msg.stickIndex}`)
+                    }
+                    // Continue to forward to bot clients regardless
+                }
+                
+                // Check for button press messages
+                if (msg.type === 'gamepadButtonPressDown' || msg.type === 'gamepadButtonPressUp') {
+                    const processed = handleButtonPress(msg, ws)
+                    if (processed) {
+                        console.log(`[WebSocket] Processed ${msg.type} from pygame client for button ${msg.buttonIndex}`)
                     }
                     // Continue to forward to bot clients regardless
                 }

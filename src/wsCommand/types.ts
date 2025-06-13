@@ -73,7 +73,7 @@ export interface MouseCommand {
   radius?: number // for circular movement
   clockwise?: boolean // for circular movement direction
   // screenshot context fields
-  context?: string // context for screenshot requests (e.g., 'movement_complete')
+  context?: string // context for screenshot requests (e.g., 'movement_complete', 'button_complete')
   movementData?: {
     stickIndex: number
     totalDistance: number
@@ -84,5 +84,12 @@ export interface MouseCommand {
     endTime: number
     startPosition: { x: number; y: number; z: number } | null
     endPosition: { x: number; y: number; z: number } | null
+  }
+  buttonData?: {
+    buttonIndex: number
+    buttonName: string
+    duration: number
+    pressStartTime: number
+    releaseTime: number
   }
 }

@@ -111,6 +111,13 @@ export class VisualCommandHandler {
           console.log('[WsCommandClient] Including movement data in screenshot response:', cmd.movementData)
         }
 
+        // Include button data if this screenshot was triggered by button completion
+        if (cmd.context === 'button_complete' && cmd.buttonData) {
+          response.buttonData = cmd.buttonData
+          response.context = 'button_complete'
+          console.log('[WsCommandClient] Including button data in screenshot response:', cmd.buttonData)
+        }
+
         this.ws.send(JSON.stringify(response))
       }
     } catch (error) {
