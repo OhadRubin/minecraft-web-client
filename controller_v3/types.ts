@@ -546,6 +546,19 @@ export interface ScreenshotMessage {
     height: number;
   };
   timestamp: number;
+  // Optional context and movement data for movement-triggered screenshots
+  context?: string;
+  movementData?: {
+    stickIndex: number;
+    totalDistance: number;
+    worldDistance: number | null;
+    duration: number;
+    peakVelocity: number;
+    startTime: number;
+    endTime: number;
+    startPosition: { x: number; y: number; z: number } | null;
+    endPosition: { x: number; y: number; z: number } | null;
+  };
 }
 
 export interface StoredScreenshot {
