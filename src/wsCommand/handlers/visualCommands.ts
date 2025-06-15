@@ -1,62 +1,12 @@
 import { MouseCommand } from '../types'
-import { createTextSprite, resizeImageBase64 } from '../utils'
+import { createTextSprite } from '../utils'
 import html2canvas from 'html2canvas'
 import * as THREE from 'three'
 
 export class VisualCommandHandler {
-  private screenshotWorker: Worker | null = null;
   
-  constructor(private bot: any, private ws?: WebSocket) {
-    this.initializeWorker();
-  }
+  constructor(private bot: any, private ws?: WebSocket) { }
   
-  private initializeWorker() {
-    try {
-      console.log('[VisualCommandHandler] Attempting to create worker at /workers/screenshot-worker.js');
-      this.screenshotWorker = new Worker('/workers/screenshot-worker.js');
-      
-      // Add detailed error listener
-      this.screenshotWorker.onerror = (error) => {
-        console.error('[VisualCommandHandler] ❌ Worker script error:', error);
-        console.error('[VisualCommandHandler] ❌ This usually means:');
-        console.error('[VisualCommandHandler] ❌   1. Worker file not found (run "pnpm build-other-workers")');
-        console.error('[VisualCommandHandler] ❌   2. Browser doesn\'t support OffscreenCanvas');
-        console.error('[VisualCommandHandler] ❌   3. Worker script has syntax errors');
-        console.error('[VisualCommandHandler] ❌ Falling back to main thread processing');
-        this.screenshotWorker = null; // Clear failed worker
-      };
-      
-      // Add message error handler
-      this.screenshotWorker.onmessageerror = (error) => {
-        console.error('[VisualCommandHandler] ❌ Worker message error:', error);
-      };
-      
-      // Test worker communication with timeout
-      console.log('[VisualCommandHandler] Testing worker communication...');
-      this.screenshotWorker.postMessage({ type: 'TEST' });
-      
-      // Set up test response handler
-      const testHandler = (event: MessageEvent) => {
-        if (event.data.type === 'TEST_RESPONSE') {
-          console.log('[VisualCommandHandler] ✅ Worker communication test successful');
-          this.screenshotWorker?.removeEventListener('message', testHandler);
-        }
-      };
-      this.screenshotWorker.addEventListener('message', testHandler);
-      
-      // Timeout test
-      setTimeout(() => {
-        if (this.screenshotWorker) {
-          this.screenshotWorker.removeEventListener('message', testHandler);
-        }
-      }, 5000);
-      
-    } catch (error) {
-      console.warn('[VisualCommandHandler] ❌ Worker creation failed:', error);
-      this.screenshotWorker = null;
-    }
-  }
-
   async handleAnnotate3dPosition(cmd: MouseCommand) {
     try {
       const scene = (window as any).world?.scene || (window as any).viewer?.scene || (window as any).scene
@@ -93,12 +43,12 @@ export class VisualCommandHandler {
         // Wait for the next frame to ensure rendering is complete
         await new Promise(resolve => requestAnimationFrame(resolve));
 
-        // DOM capture (must stay on main thread)
+        // DOM capture (must stay on main thread) - Use scale to reduce size
         const canvas = await html2canvas(document.body, {
           useCORS: true,
           allowTaint: true,
           backgroundColor: null,
-          scale: 1,
+          scale: 1,         // Half resolution = much faster + smaller
           logging: false,
           ignoreElements: (element) => {
             return element.classList?.contains('ignore-screenshot') || false
@@ -107,12 +57,8 @@ export class VisualCommandHandler {
           canvas: undefined
         });
 
-        // Try worker processing first, fallback to main thread
-        if (this.screenshotWorker) {
-          this.processScreenshotInWorker(canvas, cmd);
-        } else {
-          this.processScreenshotMainThread(canvas, cmd);
-        }
+        // Process on main thread (faster without resize overhead)
+        this.processScreenshotMainThread(canvas, cmd);
 
       } catch (error) {
         console.error('[WsCommandClient] DOM capture failed:', error);
@@ -121,59 +67,13 @@ export class VisualCommandHandler {
     }, 0);
   }
 
-  private processScreenshotInWorker(canvas: HTMLCanvasElement, cmd: MouseCommand) {
-    const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      this.processScreenshotMainThread(canvas, cmd);
-      return;
-    }
-
-    // Get ImageData (lightweight operation)
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-    // Set up one-time message listener
-    const handleWorkerMessage = (event: MessageEvent) => {
-      const { type, data, error } = event.data;
-      
-      if (type === 'SCREENSHOT_COMPLETE') {
-        this.screenshotWorker?.removeEventListener('message', handleWorkerMessage);
-        this.sendScreenshotResponse(data, cmd);
-      } else if (type === 'SCREENSHOT_ERROR') {
-        this.screenshotWorker?.removeEventListener('message', handleWorkerMessage);
-        console.warn('[WsCommandClient] Worker processing failed, falling back to main thread:', error);
-        this.processScreenshotMainThread(canvas, cmd);
-      }
-    };
-
-    this.screenshotWorker!.addEventListener('message', handleWorkerMessage);
-
-    // Send work to worker
-    this.screenshotWorker!.postMessage({
-      type: 'PROCESS_SCREENSHOT',
-      data: {
-        imageData: imageData,
-        width: canvas.width,
-        height: canvas.height,
-        targetWidth: 1080
-      }
-    });
-  }
-
   private async processScreenshotMainThread(canvas: HTMLCanvasElement, cmd: MouseCommand) {
     try {
-      const dataUrl = canvas.toDataURL('image/png', 0.8);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
       const base64Data = dataUrl.split(',')[1];
 
-      // Keep original resizing logic for fallback
-      let finalBase64Data = base64Data;
-      try {
-        const resizedDataUrl = await resizeImageBase64(dataUrl, 1080);
-        finalBase64Data = resizedDataUrl.split(',')[1];
-      } catch (resizeError) {
-        console.warn('[WsCommandClient] Failed to resize screenshot, using original:', resizeError);
-      }
-
-      this.sendScreenshotResponse(finalBase64Data, cmd);
+      // No resize needed - already rendered at target size!
+      this.sendScreenshotResponse(base64Data, cmd);
     } catch (error) {
       console.error('[WsCommandClient] Main thread processing failed:', error);
       this.sendErrorResponse(error.message);

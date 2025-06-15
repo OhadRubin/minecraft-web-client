@@ -44,7 +44,6 @@ self.onmessage = async function(event: MessageEvent) {
       });
       
       // Convert blob to base64
-      console.log('[ScreenshotWorker] 🔄 Converting blob to base64...');
       const reader = new FileReader();
       reader.onload = function() {
         const base64 = (reader.result as string).split(',')[1];
