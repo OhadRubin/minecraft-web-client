@@ -1,0 +1,9 @@
+{
+  "task": "Testing jump combinations",
+  "actions": [
+    {"tool": "walk", "parameters": {"duration": "medium"}},
+    {"tool": "jump", "parameters": {"duration": "short"}},
+    {"tool": "lookAngle", "parameters": {"xAngle": 5, "yAngle": 0, "speed": "normal"}},
+    {"tool": "getBotStatus"}
+  ]
+}
